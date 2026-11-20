@@ -1504,7 +1504,7 @@ public func channelVisibilityController(context: AccountContext, updatedPresenta
                 )
             ).start(next: { peers, accountPeer, peer, data in
                 let (limits, premiumLimits) = data
-                let isPremium = accountPeer?.isPremium ?? false
+                let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
                 
                 let hasAdditionalUsernames = (peer?.usernames.firstIndex(where: { !$0.flags.contains(.isEditable) }) ?? nil) != nil
                 
@@ -1884,7 +1884,7 @@ public func channelVisibilityController(context: AccountContext, updatedPresenta
         let peer = peerViewMainPeer(view)
         
         let (limits, premiumLimits, accountPeer) = data
-        let isPremium = accountPeer?.isPremium ?? false
+        let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
         
         var footerItem: ItemListControllerFooterItem?
         

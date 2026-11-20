@@ -92,4 +92,10 @@ class IntermediateMessage {
     func withUpdatedEmbeddedMedia(_ embeddedMedia: ReadBuffer) -> IntermediateMessage {
         return IntermediateMessage(stableId: self.stableId, stableVersion: self.stableVersion, id: self.id, globallyUniqueId: self.globallyUniqueId, groupingKey: self.groupingKey, groupInfo: self.groupInfo, threadId: self.threadId, timestamp: self.timestamp, flags: self.flags, tags: self.tags, globalTags: self.globalTags, localTags: self.localTags, customTags: self.customTags, forwardInfo: self.forwardInfo, authorId: self.authorId, text: self.text, attributesData: self.attributesData, embeddedMediaData: embeddedMedia, referencedMedia: self.referencedMedia)
     }
+    
+    /// Flags are the one part of an entry that can change without touching its index, its tags or its media: the
+    /// deleted mark (`MessageFlags.IsDeleted`) is written back with this and nothing else is recomputed.
+    func withUpdatedFlags(_ flags: MessageFlags) -> IntermediateMessage {
+        return IntermediateMessage(stableId: self.stableId, stableVersion: self.stableVersion, id: self.id, globallyUniqueId: self.globallyUniqueId, groupingKey: self.groupingKey, groupInfo: self.groupInfo, threadId: self.threadId, timestamp: self.timestamp, flags: flags, tags: self.tags, globalTags: self.globalTags, localTags: self.localTags, customTags: self.customTags, forwardInfo: self.forwardInfo, authorId: self.authorId, text: self.text, attributesData: self.attributesData, embeddedMediaData: self.embeddedMediaData, referencedMedia: self.referencedMedia)
+    }
 }

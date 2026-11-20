@@ -481,6 +481,10 @@ public struct MessageFlags: OptionSet {
             rawValue |= MessageFlags.ReactionsArePossible.rawValue
         }
         
+        if flags.contains(StoreMessageFlags.IsDeleted) {
+            rawValue |= MessageFlags.IsDeleted.rawValue
+        }
+        
         self.rawValue = rawValue
     }
     
@@ -495,6 +499,10 @@ public struct MessageFlags: OptionSet {
     public static let CopyProtected = MessageFlags(rawValue: 512)
     public static let IsForumTopic = MessageFlags(rawValue: 1024)
     public static let ReactionsArePossible = MessageFlags(rawValue: 2048)
+    /// The message was deleted upstream (by its author, or by a moderator) and kept locally so that the chat can
+    /// still show it with a mark. Set by `MessageHistoryTable.setMessagesDeletedFlag`; never sent to the server and
+    /// never derived from an API message, so a message stored from the network reads as not deleted.
+    public static let IsDeleted = MessageFlags(rawValue: 4096)
     
     public static let IsIncomingMask = MessageFlags([.Incoming, .CountedAsIncoming])
 }
@@ -716,6 +724,14 @@ public final class Message {
         return MessageIndex(id: self.id, timestamp: self.timestamp)
     }
     
+    /// The message was deleted upstream and kept in the local database instead of being removed from history
+    /// (`MessageHistoryTable.setMessagesDeletedFlag`). The chat keeps drawing it, with a mark. It is carried by
+    /// `flags` (`.IsDeleted`), so it is part of the stored entry, is preserved by every flags-preserving copy of
+    /// this message, and old entries — which carry no such bit — read as not deleted without a migration.
+    public var isDeleted: Bool {
+        return self.flags.contains(.IsDeleted)
+    }
+    
     public init(stableId: UInt32, stableVersion: UInt32, id: MessageId, globallyUniqueId: Int64?, groupingKey: Int64?, groupInfo: MessageGroupInfo?, threadId: Int64?, timestamp: Int32, flags: MessageFlags, tags: MessageTags, globalTags: GlobalMessageTags, localTags: LocalMessageTags, customTags: [MemoryBuffer], forwardInfo: MessageForwardInfo?, author: Peer?, text: String, attributes: [MessageAttribute], media: [Media], peers: SimpleDictionary<PeerId, Peer>, associatedMessages: SimpleDictionary<MessageId, Message>, associatedMessageIds: [MessageId], associatedMedia: [MediaId: Media], associatedThreadInfo: AssociatedThreadInfo?, associatedStories: [StoryId: CodableEntry]) {
         self.stableId = stableId
         self.stableVersion = stableVersion
@@ -868,6 +884,10 @@ public struct StoreMessageFlags: OptionSet {
             rawValue |= StoreMessageFlags.ReactionsArePossible.rawValue
         }
         
+        if flags.contains(.IsDeleted) {
+            rawValue |= StoreMessageFlags.IsDeleted.rawValue
+        }
+        
         self.rawValue = rawValue
     }
     
@@ -882,6 +902,9 @@ public struct StoreMessageFlags: OptionSet {
     public static let CopyProtected = StoreMessageFlags(rawValue: 512)
     public static let IsForumTopic = StoreMessageFlags(rawValue: 1024)
     public static let ReactionsArePossible = StoreMessageFlags(rawValue: 2048)
+    /// Kept in step with `MessageFlags.IsDeleted`: a message that is being re-stored with its flags must keep the
+    /// deleted mark, or the next render of the entry would show it as live again.
+    public static let IsDeleted = StoreMessageFlags(rawValue: 4096)
     
     public static let IsIncomingMask = StoreMessageFlags([.Incoming, .CountedAsIncoming])
 }

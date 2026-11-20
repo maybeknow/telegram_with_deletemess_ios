@@ -1150,7 +1150,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                                     for filter in presetList {
                                         if filter.id == id, case let .filter(_, _, _, data) = filter {
                                             let (accountPeer, limits, premiumLimits) = result
-                                            let isPremium = accountPeer?.isPremium ?? false
+                                            let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
                                             
                                             let limit = limits.maxFolderChatsCount
                                             let premiumLimit = premiumLimits.maxFolderChatsCount
@@ -6360,7 +6360,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
             }
             
             let (accountPeer, limits, _) = result
-            let isPremium = accountPeer?.isPremium ?? false
+            let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
             
             let _ = strongSelf.context.engine.peers.markChatListFeaturedFiltersAsSeen().startStandalone()
             let (_, filterItems) = filterItemsAndTotalCount

@@ -1422,7 +1422,7 @@ extension ChatControllerImpl {
                 return
             }
             let (accountPeer, limits, premiumLimits) = result
-            let isPremium = accountPeer?.isPremium ?? false
+            let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
 
             strongSelf.present(legacyICloudFilePicker(theme: strongSelf.presentationData.theme, hasMultiselection: !editingMessage, documentTypes: documentTypes, completion: { [weak self] urls in
                 if let strongSelf = self, !urls.isEmpty {

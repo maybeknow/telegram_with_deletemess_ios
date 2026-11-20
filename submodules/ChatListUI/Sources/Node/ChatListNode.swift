@@ -2229,7 +2229,7 @@ public final class ChatListNode: ListViewImpl {
             sideListParentPeer
         )
         |> map { accountPeer, parentPeer -> ChatListNodeAccountPeerState in
-            return ChatListNodeAccountPeerState(isPremium: accountPeer?.isPremium ?? false, parentPeer: parentPeer)
+            return ChatListNodeAccountPeerState(isPremium: AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false), parentPeer: parentPeer)
         }
         |> distinctUntilChanged
         

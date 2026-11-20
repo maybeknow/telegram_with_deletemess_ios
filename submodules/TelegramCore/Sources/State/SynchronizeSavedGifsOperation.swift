@@ -62,7 +62,7 @@ public enum SavedGifResult {
 public func toggleGifSaved(account: Account, fileReference: FileMediaReference, saved: Bool) -> Signal<SavedGifResult, NoError> {
     if saved {
         return account.postbox.transaction { transaction -> Signal<SavedGifResult, NoError> in
-            let isPremium = transaction.getPeer(account.peerId)?.isPremium ?? false
+            let isPremium = accountIsPremium(transaction: transaction, accountPeerId: account.peerId)
             let items = transaction.getOrderedListItems(collectionId: Namespaces.OrderedItemList.CloudRecentGifs)
             
             let appConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? .defaultValue

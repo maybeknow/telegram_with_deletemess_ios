@@ -814,7 +814,7 @@ private final class LimitSheetContent: CombinedComponent {
                     strongSelf.initialized = true
                     strongSelf.limits = limits
                     strongSelf.premiumLimits = premiumLimits
-                    strongSelf.isPremium = accountPeer?.isPremium ?? false
+                    strongSelf.isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
                     strongSelf.updated(transition: .immediate)
                 }
             })

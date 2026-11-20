@@ -686,7 +686,7 @@ public extension EngineChatList {
             displaySavedMessagesAsTopicList = value.value
         }
         
-        let isPremium = view.accountPeer?.isPremium ?? false
+        let isPremium = AyuGramPremium.isEnabled || (view.accountPeer?.isPremium ?? false)
 
         var items: [EngineChatList.Item] = []
         loop: for entry in view.entries {

@@ -1287,7 +1287,7 @@ private func chatFoldersSearchableItems(context: AccountContext) -> [SettingsSea
                     filtersWithCounts |> take(1)
                 ).start(next: { result, filters in
                     let (accountPeer, limits, premiumLimits) = result
-                    let isPremium = accountPeer?.isPremium ?? false
+                    let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
                     
                     let filters = filters.filter { filter in
                         if case .allChats = filter.0 {

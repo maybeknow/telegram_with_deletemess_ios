@@ -1606,7 +1606,7 @@ public func chatListFilterPresetController(context: AccountContext, currentPrese
                 updatedCurrentPreset |> take(1)
             ).start(next: { result, state, currentPreset in
                 let (accountPeer, limits, premiumLimits) = result
-                let isPremium = accountPeer?.isPremium ?? false
+                let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
                 
                 let (_, currentIncludePeers, _) = state
 

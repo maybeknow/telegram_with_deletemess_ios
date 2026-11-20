@@ -62,7 +62,7 @@ public func updateMessageReactionsInteractively(account: Account, messageIds: [M
             }
         }
         
-        let isPremium = (transaction.getPeer(account.peerId) as? TelegramUser)?.isPremium ?? false
+        let isPremium = accountIsPremium(transaction: transaction, accountPeerId: account.peerId)
         let appConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? .defaultValue
         let maxCount: Int
         if isPremium {

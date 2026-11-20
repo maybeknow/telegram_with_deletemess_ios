@@ -1129,7 +1129,7 @@ public final class ChatListSearchContainerNode: SearchDisplayControllerContentNo
                 guard let strongSelf = self else {
                     return []
                 }
-                let isPremium = accountPeer?.isPremium ?? false
+                let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
                 
                 var items: [ContextMenuItem] = []
                 

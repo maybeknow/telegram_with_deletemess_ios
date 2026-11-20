@@ -962,7 +962,7 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
     return dataSignal
     |> deliverOnMainQueue
     |> map { [context] data, updatingMessageMedia, infoSummaryData, appConfig, isMessageRead, messageViewsPrivacyTips, availableReactions, translationSettings, loggingSettings, notificationSoundList, accountPeer -> ContextController.Items in
-        let isPremium = accountPeer?.isPremium ?? false
+        let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
 
         var actions: [ContextMenuItem] = []
 

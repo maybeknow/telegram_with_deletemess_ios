@@ -86,3 +86,6 @@ submodules/TelegramApi/ObjC/SwiftPMGenerated/
 submodules/TelegramApi/Tests/SwiftPMGenerated/
 /Telegram.app/
 build/accessibility/
+
+# Личная конфигурация сборки с api_id/api_hash (не коммитить)
+build-system/local-configuration.json

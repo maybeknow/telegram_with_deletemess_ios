@@ -2535,7 +2535,7 @@ final class StoryItemSetContainerSendMessage: @unchecked(Sendable) {
                 return
             }
             let (accountPeer, limits, premiumLimits) = result
-            let isPremium = accountPeer?.isPremium ?? false
+            let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
 
             let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
 

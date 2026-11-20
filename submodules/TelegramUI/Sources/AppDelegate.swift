@@ -348,6 +348,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         precondition(!testIsLaunched)
         testIsLaunched = true
+        // Экранный лог ставится первым: если инициализация ниже закончится чёрным экраном, на нём
+        // останутся последние строки.
+        AyuOnScreenLog.shared.install()
         CrashReportCollector.shared.start()
         
         let _ = voipTokenPromise.get().start(next: { token in
@@ -565,10 +568,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         let baseAppBundleId = Bundle.main.bundleIdentifier!
         let appGroupName = "group.\(baseAppBundleId)"
-        try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .mainApp, biometricKeychainService: walletBiometricKeychainService), privateAccessGroup: {
-            BuildConfig.keychainAccessGroup(baseAppBundleId: baseAppBundleId)
-        })
+        do {
+            try PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .mainApp, biometricKeychainService: walletBiometricKeychainService), privateAccessGroup: {
+                BuildConfig.keychainAccessGroup(baseAppBundleId: baseAppBundleId)
+            })
+        } catch {
+            // Сийдлоад с бесплатным Apple ID: app group и keychain-группа недоступны, официальный код
+            // здесь падает через try!. Логируем и идём дальше — увидим, что будет.
+            AyuOnScreenLog.shared.log("[ayu] PasscodeEnvironment error: \(error)")
+        }
         let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+        AyuOnScreenLog.shared.log("[ayu] app group: \(maybeAppGroupUrl?.path ?? "nil")")
         
         let buildConfig = BuildConfig(baseAppBundleId: baseAppBundleId)
         self.buildConfig = buildConfig
@@ -691,9 +701,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             networkEngineFactory: RustNetworkEngineFactory()
         )
         
-        guard let appGroupUrl = maybeAppGroupUrl else {
-            self.mainWindow?.presentNative(UIAlertController(title: nil, message: "Error 2", preferredStyle: .alert))
-            return true
+        let appGroupUrl: URL
+        if let groupUrl = maybeAppGroupUrl {
+            appGroupUrl = groupUrl
+        } else {
+            // Бесплатный Apple ID при сийдлоаде не может нести entitlement app group, поэтому
+            // containerURL(forSecurityApplicationGroupIdentifier:) возвращает nil. Официальный код
+            // показывает в этом случае "Error 2" и выходит, что на устройстве выглядит чёрным экраном.
+            // Для личной сборки живём в собственном контейнере приложения.
+            let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            appGroupUrl = base
+            AyuOnScreenLog.shared.log("[ayu] app group \(appGroupName) недоступен, данные: \(base.path)")
         }
         
         var isDebugConfiguration = false

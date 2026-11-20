@@ -507,6 +507,49 @@ final class MessageHistoryTable: Table {
         }
     }
     
+    /// Keeps the given messages in history rather than removing them, and marks them as deleted upstream
+    /// (`MessageFlags.IsDeleted`, surfaced as `Message.isDeleted`).
+    ///
+    /// Only the entry's flags byte changes: the index, the timestamp, the tag tables, the summary tables, the read
+    /// state and the media references stay exactly as they are, so nothing that counts messages (unread badges, tag
+    /// summaries, the chat list's top message) has to be recomputed and no media is released. Views are told with
+    /// the pair every in-place message update uses (`Remove` + `InsertMessage`, as `justUpdate` emits for an edit):
+    /// the entry is replaced, not duplicated, and `MessageHistoryViewState.add` never sees an existing index.
+    ///
+    /// Returns the ids that were found and newly marked; an id that is not stored here, or is already marked, is
+    /// left out (the caller decides what to do with the rest).
+    @discardableResult
+    func setMessagesDeletedFlag(_ messageIds: [MessageId], operationsByPeerId: inout [PeerId: [MessageHistoryOperation]]) -> [MessageId] {
+        var markedIds: [MessageId] = []
+        for (peerId, peerMessageIds) in self.messageIdsByPeerId(messageIds) {
+            var operations: [MessageHistoryOperation] = []
+            for id in peerMessageIds {
+                guard let index = self.messageHistoryIndexTable.getIndex(id) else {
+                    continue
+                }
+                guard let message = self.getMessage(index) else {
+                    continue
+                }
+                if message.flags.contains(.IsDeleted) {
+                    continue
+                }
+                let updatedMessage = message.withUpdatedFlags(message.flags.union(.IsDeleted))
+                self.storeIntermediateMessage(updatedMessage, sharedKey: self.key(index))
+                operations.append(.Remove([(index, message.tags, message.threadId)]))
+                operations.append(.InsertMessage(updatedMessage))
+                markedIds.append(id)
+            }
+            if !operations.isEmpty {
+                if operationsByPeerId[peerId] == nil {
+                    operationsByPeerId[peerId] = operations
+                } else {
+                    operationsByPeerId[peerId]!.append(contentsOf: operations)
+                }
+            }
+        }
+        return markedIds
+    }
+    
     func removeMessagesInRange(peerId: PeerId, namespace: MessageId.Namespace, minId: MessageId.Id, maxId: MessageId.Id, operationsByPeerId: inout [PeerId: [MessageHistoryOperation]], updatedMedia: inout [MediaId: Media?], unsentMessageOperations: inout [IntermediateMessageHistoryUnsentOperation], updatedPeerReadStateOperations: inout [PeerId: PeerReadStateSynchronizationOperation?], globalTagsOperations: inout [GlobalMessageHistoryTagsOperation], pendingActionsOperations: inout [PendingMessageActionsOperation], updatedMessageActionsSummaries: inout [PendingMessageActionsSummaryKey: Int32], updatedMessageTagSummaries: inout [MessageHistoryTagsSummaryKey: MessageHistoryTagNamespaceSummary], invalidateMessageTagSummaries: inout [InvalidatedMessageHistoryTagsSummaryEntryOperation], localTagsOperations: inout [IntermediateMessageHistoryLocalTagsOperation], timestampBasedMessageAttributesOperations: inout [TimestampBasedMessageAttributesOperation], forEachMedia: ((Media) -> Void)?) {
         if minId <= maxId {
             // The whole range, stored or not (the replay's UpdateMinAvailableMessage deletes up to an id).
@@ -1908,6 +1951,13 @@ final class MessageHistoryTable: Table {
             }
             
             var flags = MessageFlags(message.flags)
+            // A message kept after an upstream deletion stays marked through every later rewrite of its entry (a
+            // re-fetch, a reaction, a read-state or media update all write a StoreMessage built from the API or from
+            // the rendered message, and neither carries the bit). The mark records something that happened to the
+            // message, which no later write can undo; only `setMessagesDeletedFlag` sets it and nothing clears it.
+            if previousMessage.flags.contains(.IsDeleted) {
+                flags.insert(.IsDeleted)
+            }
             sharedBuffer.write(&flags.rawValue, offset: 0, length: 4)
             
             var tags = message.tags

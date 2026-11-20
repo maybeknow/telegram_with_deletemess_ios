@@ -1,0 +1,234 @@
+name: Build IPA
+
+# Собирает этот форк Telegram-iOS в .ipa на macOS-раннере GitHub.
+# Ничего не публикует: результат лежит артефактом запуска и скачивается из вкладки Actions.
+#
+# Требования к образу: macOS 27 + Xcode 27.1 — label `xcode-27` (preview, arm64),
+# он совпадает с versions.json (xcode 27.1, macos 27).
+#
+# Подпись — самоподписанным сертификатом из build-system/fake-codesigning: Apple ID не нужен,
+# но на устройство такой .ipa ставится только после переподписи своим сертификатом.
+
+on:
+  push:
+    branches: [ master, main ]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: "Конфигурация сборки"
+        type: choice
+        default: debug_arm64
+        options:
+          - debug_arm64
+          - release_arm64
+      runner:
+        description: "Label раннера (xcode-27 = стандартный, xcode-27-xlarge = больше диска и ядер)"
+        type: string
+        default: xcode-27
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ipa (${{ github.event.inputs.configuration || 'debug_arm64' }})
+    runs-on: ${{ github.event.inputs.runner || 'xcode-27' }}
+    # Холодная сборка Telegram-iOS может идти часами; 355 минут — предел задания 6 ч.
+    timeout-minutes: 355
+    env:
+      BAZEL_USER_ROOT: /Users/Shared/bazel
+      CACHE_DIR: /Users/Shared/bazel-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 12 подмодулей (TDLib, WebRTC, tgcalls, libvpx, dav1d, правила Bazel) — рекурсивно и обязательно.
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: |
+          set -euxo pipefail
+          PINNED="$(python3 -c 'import json;print(json.load(open("versions.json"))["xcode"])')"
+          if [ -d "/Applications/Xcode_${PINNED}.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_${PINNED}.app/Contents/Developer"
+          elif [ -d /Applications/Xcode.app ]; then
+            echo "Xcode ${PINNED} нет, берём образ по умолчанию"
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          fi
+          xcodebuild -version
+          swift --version
+          sudo xcodebuild -license accept || true
+          sudo xcodebuild -runFirstLaunch || true
+
+      - name: Free disk space
+        # Стандартный macOS-раннер даёт ~14 ГБ свободного места, а полной сборке нужно в разы больше:
+        # убираем лишние версии Xcode и симуляторы, активную версию не трогаем.
+        # Если места всё равно не хватит — запускать на xcode-27-xlarge или на своём Mac.
+        run: |
+          set -x
+          df -h /
+          ACTIVE_APP="$(xcode-select -p | sed 's#/Contents/Developer##')"
+          for app in /Applications/Xcode*.app; do
+            case "$app" in
+              "$ACTIVE_APP"|/Applications/Xcode.app) continue ;;
+            esac
+            echo "removing $app"
+            sudo rm -rf "$app" || true
+          done
+          xcrun simctl delete all || true
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches || true
+          sudo rm -rf ~/Library/Developer/Xcode/DerivedData || true
+          df -h /
+
+      - name: Prepare directories
+        run: mkdir -p "$BAZEL_USER_ROOT" "$CACHE_DIR"
+
+      - name: Restore Bazel caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            /Users/Shared/bazel-cache
+            /Users/Shared/bazel
+          key: bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'MODULE.bazel', 'versions.json') }}
+          restore-keys: |
+            bazel-${{ runner.os }}-
+
+      - name: Import fake certificates
+        # Самоподписанный сертификат и фейковые профили: сборка подписывается ими,
+        # на устройство такой .ipa ставится только после переподписи.
+        run: python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+
+      - name: Refresh fake provisioning profiles
+        # Профили в репозитории выпущены в 2025 году с ExpirationDate 2026-10-30, и rules_apple
+        # отказывается собирать: "provisioning profile ExpirationDate is in the past".
+        # Здесь payload профиля продлевается и подписывается заново; DeveloperCertificates не меняются.
+        run: |
+          set -euo pipefail
+          security unlock-keychain -p secret temp.keychain || true
+          echo "--- keychain identities ---"
+          security find-identity -v temp.keychain || true
+          security find-identity -v -p codesigning temp.keychain || true
+
+          IDENTITY="$(security find-identity -v temp.keychain 2>/dev/null | sed -n 's/.*"\(.*\)"/\1/p' | head -1 || true)"
+          if [ -z "$IDENTITY" ]; then
+            IDENTITY="$(security find-identity -v -p codesigning temp.keychain 2>/dev/null | sed -n 's/.*"\(.*\)"/\1/p' | head -1 || true)"
+          fi
+          if [ -z "$IDENTITY" ]; then
+            IDENTITY="$(security find-certificate -a -c "Apple Distribution" -p temp.keychain 2>/dev/null | openssl x509 -noout -subject 2>/dev/null | sed -n 's#.*CN=##p' | head -1 || true)"
+          fi
+          echo "signing identity: [$IDENTITY]"
+
+          if [ -z "$IDENTITY" ]; then
+            # Запасной путь: plisttool проверяет содержимое профиля, а не подпись CMS
+            # (читает через CMS -noverify), поэтому годится одноразовый подписант.
+            echo "no identity found, signing with a throwaway key"
+            openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/signer.key -out /tmp/signer.crt \
+              -days 3650 -subj "/CN=AyuGram fake profile signer" >/dev/null 2>&1
+          fi
+
+          for profile in build-system/fake-codesigning/profiles/*.mobileprovision; do
+            echo "refreshing $profile"
+            security cms -D -i "$profile" > /tmp/profile.plist
+            python3 - /tmp/profile.plist <<'PY'
+          import datetime
+          import plistlib
+          import sys
+
+          path = sys.argv[1]
+          with open(path, "rb") as handle:
+              payload = plistlib.load(handle)
+          payload.pop("DER-Encoded-Profile", None)
+          payload["CreationDate"] = datetime.datetime(2026, 11, 1, tzinfo=datetime.timezone.utc)
+          payload["ExpirationDate"] = datetime.datetime(2035, 1, 1, tzinfo=datetime.timezone.utc)
+          with open(path, "wb") as handle:
+              plistlib.dump(payload, handle)
+          PY
+            if [ -n "$IDENTITY" ]; then
+              security cms -S -k temp.keychain -N "$IDENTITY" -i /tmp/profile.plist -o /tmp/profile.mobileprovision
+            else
+              openssl cms -sign -binary -nodetach -in /tmp/profile.plist \
+                -signer /tmp/signer.crt -inkey /tmp/signer.key -outform DER -out /tmp/profile.mobileprovision
+            fi
+            mv /tmp/profile.mobileprovision "$profile"
+            security cms -D -i "$profile" | grep -A1 "ExpirationDate"
+          done
+
+      - name: Prepare build configuration
+        # api_id/api_hash в репозитории не лежат: они приходят из секретов Actions
+        # (Settings -> Secrets and variables -> Actions: API_ID, API_HASH).
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${API_ID:-}" ] || [ -z "${API_HASH:-}" ]; then
+            echo "::error::Нужны секреты API_ID и API_HASH в настройках репозитория"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open("build-system/appstore-configuration.json", encoding="utf-8") as handle:
+              configuration = json.load(handle)
+          configuration["api_id"] = os.environ["API_ID"]
+          configuration["api_hash"] = os.environ["API_HASH"]
+          with open("/tmp/configuration.json", "w", encoding="utf-8") as handle:
+              json.dump(configuration, handle, indent="\t")
+          PY
+          python3 -c "import json; c = json.load(open('/tmp/configuration.json')); print('api_id:', c['api_id'])"
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          BUILD_NUMBER=$(( $(git rev-list --count HEAD) + $(cat build_number_offset) ))
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "CONFIGURATION=${{ github.event.inputs.configuration || 'debug_arm64' }}" >> "$GITHUB_ENV"
+          python3 -u build-system/Make/Make.py \
+            --bazelUserRoot "$BAZEL_USER_ROOT" \
+            --cacheDir "$CACHE_DIR" \
+            --overrideXcodeVersion \
+            build \
+            --configurationPath "/tmp/configuration.json" \
+            --codesigningInformationPath build-system/fake-codesigning \
+            --configuration "${{ github.event.inputs.configuration || 'debug_arm64' }}" \
+            --buildNumber "$BUILD_NUMBER" \
+            --outputBuildArtifactsPath build/artifacts
+
+      - name: Collect the IPA
+        run: |
+          set -euo pipefail
+          ls -lh build/artifacts
+          IPA="$(ls build/artifacts/*.ipa | head -1)"
+          cp "$IPA" "AyuGram-${CONFIGURATION}-${BUILD_NUMBER}.ipa"
+          shasum -a 256 AyuGram-*.ipa | tee SHA256SUMS.txt
+          {
+            echo "### AyuGram IPA"
+            echo ""
+            echo "- configuration: \`${CONFIGURATION}\`"
+            echo "- build number: \`${BUILD_NUMBER}\`"
+            echo "- size: $(du -h AyuGram-*.ipa | cut -f1)"
+            echo ""
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-${{ env.CONFIGURATION }}-${{ env.BUILD_NUMBER }}
+          path: |
+            AyuGram-*.ipa
+            SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error

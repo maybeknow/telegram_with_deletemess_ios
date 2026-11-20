@@ -183,7 +183,7 @@ public func archiveSettingsController(context: AccountContext) -> ViewController
         let updatedTheme = presentationData.theme.withModalBlocksBackground()
         presentationData = presentationData.withUpdated(theme: updatedTheme)
         
-        let isPremium = accountPeer?.isPremium ?? false
+        let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
         let isPremiumDisabled = PremiumConfiguration.with(appConfiguration: appConfiguration).isPremiumDisabled
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text(presentationData.strings.ArchiveSettings_Title), leftNavigationButton: nil, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))

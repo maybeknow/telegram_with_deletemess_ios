@@ -180,6 +180,16 @@ public final class Transaction {
         self.postbox?.deleteMessages(messageIds, forEachMedia: forEachMedia)
     }
     
+    /// Keeps the given messages in history instead of removing them, marking them as deleted upstream
+    /// (`Message.isDeleted`, drawn by the chat with a mark). The entry is rewritten in place — same index, same
+    /// timestamp, same tags, same media — and views get the same `Remove` + `InsertMessage` pair an edit produces.
+    /// Their ids are recorded as recently deleted, so a history fill whose answer predates the deletion cannot store
+    /// them again without the mark.
+    public func markMessagesAsDeleted(_ messageIds: [MessageId]) {
+        assert(!self.disposed)
+        self.postbox?.markMessagesAsDeleted(messageIds)
+    }
+    
     public func deleteMessagesInRange(peerId: PeerId, namespace: MessageId.Namespace, minId: MessageId.Id, maxId: MessageId.Id, forEachMedia: ((Media) -> Void)?) {
         assert(!self.disposed)
         self.postbox?.deleteMessagesInRange(peerId: peerId, namespace: namespace, minId: minId, maxId: maxId, forEachMedia: forEachMedia)
@@ -224,6 +234,14 @@ public final class Transaction {
         } else {
             return []
         }
+    }
+    
+    /// Records the given global ids as recently deleted without touching the stored messages. The kept-copy path
+    /// (`markMessagesAsDeleted`) records the ids of the messages it keeps; a message that was never stored here has no
+    /// id to record, only its global id, and a fetch answered before the deletion could still return it.
+    public func recordRecentlyDeletedGlobalIds(_ ids: [Int32]) {
+        assert(!self.disposed)
+        self.postbox?.messageHistoryTable.recentlyDeletedMessages.add(globalIds: ids)
     }
     
     public func deleteMessagesWithGlobalIds(_ ids: [Int32], forEachMedia: ((Media) -> Void)?) {
@@ -2431,6 +2449,15 @@ final class PostboxImpl {
     
     fileprivate func deleteMessages(_ messageIds: [MessageId], forEachMedia: ((Media) -> Void)?) {
         self.messageHistoryTable.removeMessages(messageIds, operationsByPeerId: &self.currentOperationsByPeerId, updatedMedia: &self.currentUpdatedMedia, unsentMessageOperations: &currentUnsentOperations, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations, globalTagsOperations: &self.currentGlobalTagsOperations, pendingActionsOperations: &self.currentPendingMessageActionsOperations, updatedMessageActionsSummaries: &self.currentUpdatedMessageActionsSummaries, updatedMessageTagSummaries: &self.currentUpdatedMessageTagSummaries, invalidateMessageTagSummaries: &self.currentInvalidateMessageTagSummaries, localTagsOperations: &self.currentLocalTagsOperations, timestampBasedMessageAttributesOperations: &self.currentTimestampBasedMessageAttributesOperations, forEachMedia: forEachMedia)
+    }
+    
+    /// The kept-copy counterpart of `deleteMessages` above: the messages stay in the database, marked as deleted
+    /// upstream. They are recorded in `RecentlyDeletedMessages` exactly as a deletion would record them, because the
+    /// reason for that record — a fetch answered before the deletion must not resurrect the message — applies just
+    /// as much to a message that is kept: storing it again would write it back without the mark.
+    fileprivate func markMessagesAsDeleted(_ messageIds: [MessageId]) {
+        self.messageHistoryTable.recentlyDeletedMessages.add(ids: messageIds)
+        self.messageHistoryTable.setMessagesDeletedFlag(messageIds, operationsByPeerId: &self.currentOperationsByPeerId)
     }
     
     fileprivate func deleteMessagesInRange(peerId: PeerId, namespace: MessageId.Namespace, minId: MessageId.Id, maxId: MessageId.Id, forEachMedia: ((Media) -> Void)?) {

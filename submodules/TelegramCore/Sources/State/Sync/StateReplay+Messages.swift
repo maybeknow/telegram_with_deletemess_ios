@@ -5,6 +5,11 @@ internal import TelegramApi
 import MtProtoKit
 import EncryptionProvider
 
+/// Personal-build switch for the "keep deleted messages" behaviour of `applyRemoteMessageDeletion` below. `false`
+/// restores the stock behaviour (a deletion the server reports removes the message from history) without touching
+/// anything else.
+private let keepDeletedMessages = true
+
 /// Messages: added (to a history, scheduled, quick replies), edited and deleted, and ephemeral replacements; what hangs
 /// off a message: polls, media and web pages, pins, views, reactions, transcriptions, extended media; drafts and
 /// delivery reports.
@@ -273,22 +278,69 @@ extension ReplayContext {
         deleteEphemeralMessages(transaction: transaction, peerId: peerId, ids: ids)
     }
     
-    func applyDeleteMessagesWithGlobalIds(_ ids: [Int32]) {
-        var resourceIds: [MediaResourceId] = []
-        transaction.deleteMessagesWithGlobalIds(ids, forEachMedia: { media in
-            addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
-        })
-        if !resourceIds.isEmpty {
-            let _ = mediaBox.removeCachedResources(Array(Set(resourceIds)), force: true).start()
+    /// A deletion the server reported (an author deleted a message for everyone, or a moderator deleted someone
+    /// else's): the messages of this account's correspondents are kept in the local database and marked as deleted,
+    /// so the chat goes on showing them with a mark (`Message.isDeleted`, drawn by TelegramUI). This is the
+    /// AyuGram-style "keep deleted messages" behaviour of this build, and it is local only: nothing is sent anywhere.
+    ///
+    /// Everything else keeps the official behaviour: a message this account wrote is removed (deleting one's own
+    /// message for everyone), an id that is already marked is left alone (a repeated deletion changes nothing), and a
+    /// message that is not stored here cannot be judged and is treated as removed, exactly as before.
+    ///
+    /// Returns the ids that must be removed.
+    private func applyRemoteMessageDeletion(_ messageIds: [MessageId]) -> [MessageId] {
+        var keptMessageIds: [MessageId] = []
+        var removedMessageIds: [MessageId] = []
+        for messageId in messageIds {
+            guard let message = transaction.getMessage(messageId) else {
+                removedMessageIds.append(messageId)
+                continue
+            }
+            if message.flags.contains(.IsDeleted) {
+                continue
+            }
+            if keepDeletedMessages && message.flags.contains(.Incoming) {
+                keptMessageIds.append(messageId)
+            } else {
+                removedMessageIds.append(messageId)
+            }
         }
-        deletedMessageIds.append(contentsOf: ids.map { .global($0) })
+        if !keptMessageIds.isEmpty {
+            transaction.markMessagesAsDeleted(keptMessageIds)
+        }
+        return removedMessageIds
+    }
+    
+    func applyDeleteMessagesWithGlobalIds(_ ids: [Int32]) {
+        transaction.recordRecentlyDeletedGlobalIds(ids)
+        
+        let removedMessageIds = self.applyRemoteMessageDeletion(transaction.messageIdsForGlobalIds(ids))
+        if !removedMessageIds.isEmpty {
+            var resourceIds: [MediaResourceId] = []
+            transaction.deleteMessages(removedMessageIds, forEachMedia: { media in
+                addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
+            })
+            if !resourceIds.isEmpty {
+                let _ = mediaBox.removeCachedResources(Array(Set(resourceIds)), force: true).start()
+            }
+        }
+        deletedMessageIds.append(contentsOf: removedMessageIds.map { id -> DeletedMessageId in
+            if id.peerId.namespace == Namespaces.Peer.CloudUser || id.peerId.namespace == Namespaces.Peer.CloudGroup {
+                return .global(id.id)
+            } else {
+                return .messageId(id)
+            }
+        })
     }
     
     func applyDeleteMessages(_ ids: [MessageId]) {
-        _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: { id, add, remove in
-            self.addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
-        })
-        deletedMessageIds.append(contentsOf: ids.map { .messageId($0) })
+        let removedMessageIds = self.applyRemoteMessageDeletion(ids)
+        if !removedMessageIds.isEmpty {
+            _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: removedMessageIds, manualAddMessageThreadStatsDifference: { id, add, remove in
+                self.addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
+            })
+        }
+        deletedMessageIds.append(contentsOf: removedMessageIds.map { .messageId($0) })
     }
     
     func applyUpdateMinAvailableMessage(_ id: MessageId) {

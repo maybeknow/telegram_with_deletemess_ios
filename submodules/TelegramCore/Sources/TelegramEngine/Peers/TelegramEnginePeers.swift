@@ -1399,7 +1399,7 @@ public extension TelegramEngine {
                     let appConfiguration: AppConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self) ?? AppConfiguration.defaultValue
                     
                     let accountPeer = transaction.getPeer(self.account.peerId)
-                    let limitsConfiguration = UserLimitsConfiguration(appConfiguration: appConfiguration, isPremium: accountPeer?.isPremium ?? false)
+                    let limitsConfiguration = UserLimitsConfiguration(appConfiguration: appConfiguration, isPremium: AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false))
                     let limit = limitsConfiguration.maxPinnedSavedChatCount
                     
                     return (transaction.getPeerPinnedThreads(peerId: id), Int(limit))

@@ -1032,6 +1032,33 @@ Left for the optimization task; each checked in the current code except where ma
   `removeBarrierSubscriber`).
 - Fixed: Q1, Q2, Q3, Q4, Q11, Q12, Q13, Q14, Q15, G1, G2, G4, G10, R1, R2, R6, C2, C3, C11.
 
+## Kept deletions (personal build)
+
+A message deleted upstream by its author (or by a moderator) is an `applyDeleteMessagesWithGlobalIds` /
+`applyDeleteMessages` replay in `StateReplay+Messages.swift`. This build keeps the correspondent's copy instead of
+removing it: `keepDeletedMessages` (file-private in that file, `true`) routes the replay through
+`applyRemoteMessageDeletion`, which sends the incoming ids to `Transaction.markMessagesAsDeleted` and returns the rest
+for removal.
+
+- The kept message is marked in place: `MessageHistoryTable.setMessagesDeletedFlag` rewrites only the entry's flags
+  (`MessageFlags.IsDeleted`, `Message.isDeleted`) and tells views with the `Remove` + `InsertMessage` pair an edit emits.
+  Its index, tags, summaries, read state and media references are untouched, so no counter has to be recomputed.
+- The mark is sticky: `justUpdate` keeps the bit from the previous entry, because every later rewrite (a re-fetch, a
+  reaction, a media update) carries a `StoreMessage` without it.
+- The mark is local. Nothing about it is sent; a `StoreMessage` built from the API maps to `isDeleted == false`.
+- The official behaviour is unchanged: a message this account wrote is still removed (deleting one's own message),
+  a message deleted for this account only still goes through `_internal_deleteMessages`, and `clearHistory`, the
+  channel-available range and the reset keep deleting.
+- Kept ids are recorded in `RecentlyDeletedMessages`, exactly as a deletion records its ids, so a history fill answered
+  before the deletion cannot store the message back without the mark.
+- `deletedMessageIds` carries only the removed ids, so `messagesRemovedContext` and the `deletedMessages` pipe stay
+  truthful.
+- **Not covered, on purpose or pending:** the history fill's confirmation (`deleteStoredMessagesAsReceivedDeletion`),
+  the read-state validation's `_internal_deleteMessages`, secret-chat deletions, and `updateChannelAvailableMessages`.
+  These delete as before. `Tests/StateSync` pins the stock behaviour (its truth server compares the store with a model
+  in which a deletion removes the message), so those tests fail with the switch on; they are the first thing to revisit
+  if the behaviour is ever flipped.
+
 ## Changing state sync safely
 
 ```sh

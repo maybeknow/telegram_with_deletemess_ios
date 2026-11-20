@@ -1615,7 +1615,7 @@ public func privacyAndSecurityController(
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text(presentationData.strings.PrivacySettings_Title), leftNavigationButton: nil, rightNavigationButton: rightNavigationButton, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back), animateChanges: false)
         
-        let isPremium = accountPeer?.isPremium ?? false
+        let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
         let isPremiumDisabled = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 }).isPremiumDisabled
         let localWebBrowserSettings = webBrowserData.0.entries[ApplicationSpecificSharedDataKeys.webBrowserSettings]?.get(WebBrowserSettings.self) ?? WebBrowserSettings.defaultSettings
         let accountWebBrowserSettings = webBrowserData.1?.get(AccountWebBrowserSettings.self) ?? AccountWebBrowserSettings.defaultSettings

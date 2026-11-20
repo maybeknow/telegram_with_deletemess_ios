@@ -265,7 +265,7 @@ public func quickReactionSetupController(
     )
     |> deliverOnMainQueue
     |> map { presentationData, state, availableReactions, settings, accountPeer -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        let isPremium = accountPeer?.isPremium ?? false
+        let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
         let title: String = presentationData.strings.Settings_QuickReactionSetup_Title
         
         let entries = quickReactionSetupControllerEntries(

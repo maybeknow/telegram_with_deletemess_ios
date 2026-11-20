@@ -1,0 +1,283 @@
+import Foundation
+import UIKit
+
+/// Голый экран логов для личной сборки: белый фон, системный шрифт, только текст.
+///
+/// Задачи, которые он решает:
+/// - видеть, что происходит при запуске, ещё до появления интерфейса Telegram;
+/// - пережить падение: всё пишется в файл, и при следующем запуске прошлый хвост виден сверху
+///   (приложение, упавшее на старте, иначе не оставляет следов вообще);
+/// - нечистоплотные исключения и сигналы перехватываются и дописываются в тот же файл.
+public final class AyuOnScreenLog {
+    public static let shared = AyuOnScreenLog()
+
+    private let lock = NSLock()
+    private var lines: [String] = []
+    private let maxLines = 500
+
+    private var window: UIWindow?
+    private var logContainer: UIView?
+    private var textView: UITextView?
+    private var hideButton: UIButton?
+    private var miniButton: UIButton?
+
+    private var fileHandle: FileHandle?
+    private var signalFD: Int32 = -1
+    private var sceneRetryCount: Int = 0
+
+    private init() {
+    }
+
+    private var logFileURL: URL {
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return directory.appendingPathComponent("ayu-log.txt")
+    }
+
+    /// Ставит перехват вывода, окно с логом и обработчики падений. Вызывается первым делом
+    /// в didFinishLaunching, до любой инициализации.
+    public func install() {
+        self.openLogFile()
+        self.installCrashHandlers()
+        self.redirectOutput()
+        self.showPreviousSessionTail()
+
+        DispatchQueue.main.async {
+            self.createWindowIfNeeded()
+        }
+        self.log("[ayu] launch \(Bundle.main.bundleIdentifier ?? "?") \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
+
+        // Сердцебиение: если через секунду строка не появилась, значит didFinishLaunching не отдал
+        // управление (что-то блокирует) или процесс умер раньше.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            let scenes = UIApplication.shared.connectedScenes.count
+            AyuOnScreenLog.shared.log("[ayu] alive +1s, scenes=\(scenes)")
+        }
+        // Экран логов сам убирается через 15 секунд, чтобы не закрывать приложение; вернуть — кнопка "log".
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
+            self.setLogVisible(false)
+        }
+    }
+
+    // MARK: - Файл
+
+    private func openLogFile() {
+        let url = self.logFileURL
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        self.fileHandle = try? FileHandle(forWritingTo: url)
+        self.fileHandle?.seekToEndOfFile()
+        self.signalFD = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+    }
+
+    private func showPreviousSessionTail() {
+        guard let data = try? Data(contentsOf: self.logFileURL), !data.isEmpty else {
+            return
+        }
+        let text = String(data: data, encoding: .utf8) ?? ""
+        let lines = text.split(separator: "\n").suffix(60)
+        if lines.isEmpty {
+            return
+        }
+        self.lock.lock()
+        self.lines.append("=== прошлый запуск ===")
+        for line in lines {
+            self.lines.append(String(line))
+        }
+        self.lines.append("=== текущий запуск ===")
+        self.lock.unlock()
+    }
+
+    // MARK: - Вывод
+
+    private func redirectOutput() {
+        var fds: [Int32] = [0, 0]
+        guard pipe(&fds) == 0 else {
+            return
+        }
+        dup2(fds[1], STDOUT_FILENO)
+        dup2(fds[1], STDERR_FILENO)
+        close(fds[1])
+
+        let readFD = fds[0]
+        let queue = DispatchQueue(label: "AyuGram.log.read")
+        queue.async {
+            var buffer = [UInt8](repeating: 0, count: 8192)
+            var pending = Data()
+            while true {
+                let count = read(readFD, &buffer, buffer.count)
+                if count <= 0 {
+                    break
+                }
+                pending.append(contentsOf: buffer[0 ..< count])
+                while let newlineIndex = pending.firstIndex(of: 0x0A) {
+                    let lineData = pending[0 ..< newlineIndex]
+                    pending.removeSubrange(0 ... newlineIndex)
+                    if let text = String(data: lineData, encoding: .utf8) {
+                        AyuOnScreenLog.shared.append(text)
+                    }
+                }
+            }
+        }
+    }
+
+    public func log(_ message: String) {
+        self.append(message)
+    }
+
+    private func append(_ rawLine: String) {
+        let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if line.isEmpty {
+            return
+        }
+        self.lock.lock()
+        self.lines.append(line)
+        if self.lines.count > self.maxLines {
+            self.lines.removeFirst(self.lines.count - self.maxLines)
+        }
+        let text = self.lines.joined(separator: "\n")
+        self.lock.unlock()
+
+        self.fileHandle?.write(Data((line + "\n").utf8))
+
+        DispatchQueue.main.async {
+            if let textView = self.textView {
+                textView.text = text
+                let end = NSRange(location: (text as NSString).length, length: 0)
+                textView.scrollRangeToVisible(end)
+            }
+        }
+    }
+
+    // MARK: - Обработчики падений
+
+    private func installCrashHandlers() {
+        NSSetUncaughtExceptionHandler { exception in
+            let text = "\n[ayu] UNCAUGHT \(exception.name.rawValue): \(exception.reason ?? "?")\n" + exception.callStackSymbols.joined(separator: "\n") + "\n"
+            AyuOnScreenLog.shared.writeRaw(text)
+        }
+        for sig in [SIGABRT, SIGSEGV, SIGILL, SIGFPE, SIGBUS, SIGTRAP] {
+            signal(sig) { received in
+                let text = "[ayu] SIGNAL \(received)\n"
+                AyuOnScreenLog.shared.writeSignal(text)
+                signal(received, SIG_DFL)
+                raise(received)
+            }
+        }
+    }
+
+    private func writeRaw(_ text: String) {
+        self.fileHandle?.write(Data(text.utf8))
+    }
+
+    private func writeSignal(_ text: String) {
+        let fd = self.signalFD
+        guard fd >= 0 else {
+            return
+        }
+        text.withCString { pointer in
+            _ = write(fd, pointer, strlen(pointer))
+        }
+    }
+
+    // MARK: - Окно
+
+    private func createWindowIfNeeded() {
+        guard self.window == nil else {
+            return
+        }
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            window = UIWindow(windowScene: scene)
+        } else {
+            // Сцена подключается после didFinishLaunching — ждём её несколько кадров, но не бесконечно.
+            if self.sceneRetryCount < 60 {
+                self.sceneRetryCount += 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    self.createWindowIfNeeded()
+                }
+            }
+            return
+        }
+        window.windowLevel = UIWindow.Level.alert + 100
+        window.backgroundColor = .clear
+
+        let root = AyuPassthroughViewController()
+        root.view.backgroundColor = .clear
+        window.rootViewController = root
+
+        let logContainer = UIView(frame: root.view.bounds)
+        logContainer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        logContainer.backgroundColor = .white
+        root.view.addSubview(logContainer)
+
+        let textView = UITextView(frame: logContainer.bounds)
+        textView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        textView.backgroundColor = .white
+        textView.textColor = .black
+        textView.font = UIFont.systemFont(ofSize: 11.0)
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.textContainerInset = UIEdgeInsets(top: 44.0, left: 8.0, bottom: 8.0, right: 8.0)
+        logContainer.addSubview(textView)
+
+        let hideButton = UIButton(type: .system)
+        hideButton.setTitle("скрыть", for: .normal)
+        hideButton.titleLabel?.font = UIFont.systemFont(ofSize: 13.0)
+        hideButton.frame = CGRect(x: 8.0, y: 8.0, width: 80.0, height: 30.0)
+        hideButton.addTarget(self, action: #selector(self.hideTapped), for: .touchUpInside)
+        logContainer.addSubview(hideButton)
+
+        // Кнопка возврата лога: видна всегда, поверх приложения, но маленькая и не мешает.
+        let miniButton = UIButton(type: .system)
+        miniButton.setTitle("log", for: .normal)
+        miniButton.titleLabel?.font = UIFont.systemFont(ofSize: 11.0)
+        miniButton.setTitleColor(.white, for: .normal)
+        miniButton.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        miniButton.layer.cornerRadius = 8.0
+        miniButton.frame = CGRect(x: root.view.bounds.width - 52.0, y: 8.0, width: 44.0, height: 24.0)
+        miniButton.autoresizingMask = [.flexibleLeftMargin]
+        miniButton.addTarget(self, action: #selector(self.miniTapped), for: .touchUpInside)
+        root.view.addSubview(miniButton)
+
+        self.window = window
+        self.logContainer = logContainer
+        self.textView = textView
+        self.hideButton = hideButton
+        self.miniButton = miniButton
+
+        self.lock.lock()
+        let text = self.lines.joined(separator: "\n")
+        self.lock.unlock()
+        textView.text = text
+
+        window.isHidden = false
+    }
+
+    private func setLogVisible(_ visible: Bool) {
+        self.logContainer?.isHidden = !visible
+    }
+
+    @objc private func hideTapped() {
+        self.setLogVisible(false)
+    }
+
+    @objc private func miniTapped() {
+        self.setLogVisible(true)
+    }
+}
+
+/// Прозрачная для нажатий обёртка: окно лога висит поверх приложения, но не должно перехватывать
+/// тапы вне своих панелей — иначе интерфейс под ним перестаёт нажиматься.
+private final class AyuPassthroughView: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let result = super.hitTest(point, with: event)
+        return result === self ? nil : result
+    }
+}
+
+private final class AyuPassthroughViewController: UIViewController {
+    override func loadView() {
+        self.view = AyuPassthroughView()
+    }
+}

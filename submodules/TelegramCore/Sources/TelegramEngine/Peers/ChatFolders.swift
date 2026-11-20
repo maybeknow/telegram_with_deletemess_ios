@@ -76,7 +76,7 @@ func _internal_exportChatFolder(account: Account, filterId: Int32, title: String
         |> `catch` { error -> Signal<Api.chatlists.ExportedChatlistInvite, ExportChatFolderError> in
             if error.errorDescription == "INVITES_TOO_MUCH" || error.errorDescription == "CHATLISTS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(ExportChatFolderError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.chatlists.ExportedChatlistInvite, ExportChatFolderError> in
@@ -101,7 +101,7 @@ func _internal_exportChatFolder(account: Account, filterId: Int32, title: String
                 return .fail(.someUserTooManyChannels)
             } else if error.errorDescription == "CHANNELS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(ExportChatFolderError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.chatlists.ExportedChatlistInvite, ExportChatFolderError> in
@@ -425,7 +425,7 @@ func _internal_joinChatFolderLink(account: Account, slug: String, peerIds: [Engi
         |> `catch` { error -> Signal<Api.Updates, JoinChatFolderLinkError> in
             if error.errorDescription == "USER_CHANNELS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(JoinChatFolderLinkError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.Updates, JoinChatFolderLinkError> in
@@ -440,7 +440,7 @@ func _internal_joinChatFolderLink(account: Account, slug: String, peerIds: [Engi
                 }
             } else if error.errorDescription == "DIALOG_FILTERS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(JoinChatFolderLinkError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.Updates, JoinChatFolderLinkError> in
@@ -455,7 +455,7 @@ func _internal_joinChatFolderLink(account: Account, slug: String, peerIds: [Engi
                 }
             } else if error.errorDescription == "CHATLISTS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(JoinChatFolderLinkError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.Updates, JoinChatFolderLinkError> in
@@ -470,7 +470,7 @@ func _internal_joinChatFolderLink(account: Account, slug: String, peerIds: [Engi
                 }
             } else if error.errorDescription == "CHANNELS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(JoinChatFolderLinkError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.Updates, JoinChatFolderLinkError> in
@@ -704,7 +704,7 @@ func _internal_joinAvailableChatsInFolder(account: Account, updates: ChatFolderU
         |> `catch` { error -> Signal<Api.Updates, JoinChatFolderLinkError> in
             if error.errorDescription == "DIALOG_FILTERS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(JoinChatFolderLinkError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.Updates, JoinChatFolderLinkError> in
@@ -719,7 +719,7 @@ func _internal_joinAvailableChatsInFolder(account: Account, updates: ChatFolderU
                 }
             } else if error.errorDescription == "FILTERS_TOO_MUCH" {
                 return account.postbox.transaction { transaction -> (AppConfiguration, Bool) in
-                    return (currentAppConfiguration(transaction: transaction), transaction.getPeer(account.peerId)?.isPremium ?? false)
+                    return (currentAppConfiguration(transaction: transaction), accountIsPremium(transaction: transaction, accountPeerId: account.peerId))
                 }
                 |> castError(JoinChatFolderLinkError.self)
                 |> mapToSignal { appConfiguration, isPremium -> Signal<Api.Updates, JoinChatFolderLinkError> in

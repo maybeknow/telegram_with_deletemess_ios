@@ -311,7 +311,7 @@ public func oldChannelsController(context: AccountContext, updatedPresentationDa
             dismissImpl?()
         })
         let (accountPeer, limits, premiumLimits) = limits
-        let isPremium = accountPeer?.isPremium ?? false
+        let isPremium = AyuGramPremium.isEnabled || (accountPeer?.isPremium ?? false)
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text(presentationData.strings.OldChannels_Title), leftNavigationButton: leftNavigationButton, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))
         
