@@ -33,6 +33,7 @@ permissions:
   contents: read
 
 concurrency:
+  # Новый push отменяет предыдущий прогон: он всё равно устарел.
   group: ipa-${{ github.ref }}
   cancel-in-progress: true
 
