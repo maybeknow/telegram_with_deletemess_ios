@@ -585,6 +585,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let signatureDict = BuildConfigExtra.signatureDict()
         
         let apiId: Int32 = buildConfig.apiId
+        AyuOnScreenLog.shared.log("[ayu] api_id \(apiId), siri \(buildConfig.isSiriEnabled), appstore \(buildConfig.isAppStoreBuild)")
         let apiHash: String = buildConfig.apiHash
         let languagesCategory = "ios"
         
