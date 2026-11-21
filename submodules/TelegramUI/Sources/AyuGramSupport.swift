@@ -21,6 +21,7 @@ public final class AyuOnScreenLog {
     private var hideButton: UIButton?
     private var miniButton: UIButton?
     private var gateButton: UIButton?
+    private var wipeButton: UIButton?
     private var didInstall = false
     private var gatePassed = false
     private var gateContinuation: (() -> Void)?
@@ -299,21 +300,74 @@ public final class AyuOnScreenLog {
         button.setTitleColor(.white, for: .normal)
         button.backgroundColor = UIColor.systemBlue
         button.layer.cornerRadius = 10.0
-        button.frame = CGRect(x: 20.0, y: container.bounds.height - 90.0, width: container.bounds.width - 40.0, height: 50.0)
+        button.frame = CGRect(x: 20.0, y: container.bounds.height - 132.0, width: container.bounds.width - 40.0, height: 50.0)
         button.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
         button.addTarget(self, action: #selector(self.gateTapped), for: .touchUpInside)
         container.addSubview(button)
         self.gateButton = button
+
+        // Второй путь: стереть данные и запуститься с чистой базой. База уже могла остаться
+        // недописанной после предыдущих падений, отсюда "no such table: t19" и трап при старте.
+        let wipeButton = UIButton(type: .system)
+        wipeButton.setTitle("Стереть данные и запустить", for: .normal)
+        wipeButton.titleLabel?.font = UIFont.systemFont(ofSize: 15.0)
+        wipeButton.setTitleColor(.white, for: .normal)
+        wipeButton.backgroundColor = UIColor.systemRed
+        wipeButton.layer.cornerRadius = 10.0
+        wipeButton.frame = CGRect(x: 20.0, y: container.bounds.height - 74.0, width: container.bounds.width - 40.0, height: 44.0)
+        wipeButton.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
+        wipeButton.addTarget(self, action: #selector(self.wipeTapped), for: .touchUpInside)
+        container.addSubview(wipeButton)
+        self.wipeButton = wipeButton
     }
 
     @objc private func gateTapped() {
         self.gatePassed = true
         self.gateButton?.removeFromSuperview()
         self.gateButton = nil
+        self.wipeButton?.removeFromSuperview()
+        self.wipeButton = nil
         self.setLogVisible(false)
         let continuation = self.gateContinuation
         self.gateContinuation = nil
         continuation?()
+    }
+
+    @objc private func wipeTapped() {
+        let removed = AyuStorageReset.wipe()
+        self.log("[ayu] storage wiped: \(removed)")
+        self.gateTapped()
+    }
+}
+
+/// Стирание данных приложения: база Postbox и кэши. Нужно, когда после падений на старте
+/// в контейнере остаётся недописанная база (симптом — "no such table" в логе).
+enum AyuStorageReset {
+    static func wipe() -> String {
+        let fileManager = FileManager.default
+        var removedPaths: [String] = []
+        var didFail = false
+
+        var roots: [URL] = []
+        if let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            roots.append(applicationSupport.appendingPathComponent("telegram-data"))
+        }
+        if let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            roots.append(caches)
+        }
+
+        for root in roots {
+            guard fileManager.fileExists(atPath: root.path) else {
+                continue
+            }
+            do {
+                try fileManager.removeItem(at: root)
+                removedPaths.append(root.lastPathComponent)
+            } catch {
+                didFail = true
+            }
+        }
+        return didFail ? "partial (\(removedPaths.joined(separator: ", ")))" : removedPaths.joined(separator: ", ")
     }
 }
 
