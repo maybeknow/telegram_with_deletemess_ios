@@ -16,8 +16,13 @@ public enum MessageTimestampStatusFormat {
 /// Drawn before the time of a message that was deleted upstream and kept in history (`Message.isDeleted`), where
 /// AyuGram's Android build puts its own deleted mark before the time as well (`AyuConfig.getDeletedMark()`, which
 /// defaults to a broom there; a bin here). It is part of the time string, so it sits beside the status icon and no
-/// extra node or layout width has to be arranged for it.
-private let deletedMessageMark = "🗑"
+/// extra node or layout width has to be arranged for it. Метку можно сменить в настройках (`ayugram.deletedMark`).
+private var deletedMessageMark: String {
+    if let value = UserDefaults.standard.object(forKey: "ayugram.deletedMark") as? String {
+        return value
+    }
+    return "🗑"
+}
 
 private func dateStringForDay(strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, timestamp: Int32) -> String {
     var t: time_t = time_t(timestamp)

@@ -7,8 +7,14 @@ import EncryptionProvider
 
 /// Personal-build switch for the "keep deleted messages" behaviour of `applyRemoteMessageDeletion` below. `false`
 /// restores the stock behaviour (a deletion the server reports removes the message from history) without touching
-/// anything else.
-private let keepDeletedMessages = true
+/// anything else. Значение живёт в `UserDefaults` (`ayugram.keepDeletedMessages`), его пишет экран AyuGram в
+/// настройках; по умолчанию включено.
+private var keepDeletedMessages: Bool {
+    if let value = UserDefaults.standard.object(forKey: "ayugram.keepDeletedMessages") as? Bool {
+        return value
+    }
+    return true
+}
 
 /// Messages: added (to a history, scheduled, quick replies), edited and deleted, and ephemeral replacements; what hangs
 /// off a message: polls, media and web pages, pins, views, reactions, transcriptions, extended media; drafts and

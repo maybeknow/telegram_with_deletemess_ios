@@ -11,8 +11,16 @@ import Postbox
 /// server decides stays decided by the server — a request that needs a real subscription is still refused, and the
 /// account is still not premium to anyone else. This is a local illusion, exactly like AyuGram's.
 public enum AyuGramPremium {
+    /// Ключ настройки; значение пишет экран AyuGram в настройках, читают и ядро, и оболочка.
+    public static let settingsKey = "ayugram.fakePremium"
+
     /// `false` restores the stock behaviour everywhere this build consults it.
-    public static let isEnabled = true
+    public static var isEnabled: Bool {
+        if let value = UserDefaults.standard.object(forKey: self.settingsKey) as? Bool {
+            return value
+        }
+        return true
+    }
 }
 
 /// Whether this account is premium as far as the client is concerned: a real subscription, or the local fake above.
