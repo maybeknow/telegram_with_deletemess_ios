@@ -43,6 +43,24 @@ private final class AccountPresenceManagerImpl {
     }
     
     private func updatePresence(_ isOnline: Bool) {
+        // Ghost mode (AyuGram): для собеседников аккаунт всегда офлайн. Локально приложение продолжает
+        // считать себя активным, поэтому вместо updateStatus(offline: false) уходит offline: true.
+        if UserDefaults.standard.bool(forKey: "ayugram.ghostMode") {
+            self.onlineTimer?.invalidate()
+            self.onlineTimer = nil
+            self.isPerformingUpdate.set(true)
+            self.currentRequestDisposable.set((self.network.request(Api.functions.account.updateStatus(offline: .boolTrue))
+            |> `catch` { _ -> Signal<Api.Bool, NoError> in
+                return .single(.boolFalse)
+            }
+            |> deliverOn(self.queue)).start(completed: { [weak self] in
+                guard let strongSelf = self else {
+                    return
+                }
+                strongSelf.isPerformingUpdate.set(false)
+            }))
+            return
+        }
         let request: Signal<Api.Bool, MTRpcError>
         if isOnline {
             let timer = SignalKitTimer(timeout: 30.0, repeat: false, completion: { [weak self] in

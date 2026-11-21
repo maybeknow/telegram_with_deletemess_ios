@@ -18,6 +18,7 @@ private let ayuKeepDeletedKey = "ayugram.keepDeletedMessages"
 private let ayuFakePremiumKey = "ayugram.fakePremium"
 private let ayuDeletedMarkKey = "ayugram.deletedMark"
 private let ayuForwardCopyKey = "ayugram.forwardDeletedAsCopy"
+private let ayuGhostModeKey = "ayugram.ghostMode"
 
 private func ayuBool(_ key: String, defaultValue: Bool) -> Bool {
     if let value = UserDefaults.standard.object(forKey: key) as? Bool {
@@ -34,6 +35,7 @@ private final class AyuGramSettingsController: ViewController {
     private var fakePremiumSwitch: UISwitch?
     private var forwardCopySwitch: UISwitch?
     private var markField: UITextField?
+    private var ghostSwitch: UISwitch?
 
     init(context: AccountContext) {
         self.context = context
@@ -90,8 +92,20 @@ private final class AyuGramSettingsController: ViewController {
             action: #selector(self.forwardCopyChanged(_:))
         )
 
-        y = self.addSection(title: "ПРЕМИУМ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+        y = self.addSection(title: "ПРИВАТНОСТЬ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
 
+        self.ghostSwitch = self.addRow(
+            title: "Ghost mode",
+            detail: "Аккаунт всегда офлайн для собеседников",
+            scrollView: scrollView,
+            y: &y,
+            inset: inset,
+            presentationData: presentationData,
+            isOn: ayuBool(ayuGhostModeKey, defaultValue: false),
+            action: #selector(self.ghostChanged(_:))
+        )
+
+        y = self.addSection(title: "ПРЕМИУМ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
         self.fakePremiumSwitch = self.addRow(
             title: "Локальный Premium",
             detail: "Клиент считает аккаунт премиумом, сервер — нет",
@@ -202,6 +216,10 @@ private final class AyuGramSettingsController: ViewController {
 
     @objc private func forwardCopyChanged(_ sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: ayuForwardCopyKey)
+    }
+
+    @objc private func ghostChanged(_ sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: ayuGhostModeKey)
     }
 
     @objc private func markChanged(_ sender: UITextField) {
