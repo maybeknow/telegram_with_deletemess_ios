@@ -52,6 +52,8 @@ extension PeerInfoScreenNode {
             }
         }
         switch section {
+        case .ayuGram:
+            push(ayuGramSettingsController(context: self.context))
         case .avatar:
             self.controller?.openAvatarForEditing()
         case .edit:

@@ -15,13 +15,16 @@ public enum MessageTimestampStatusFormat {
 
 /// Drawn before the time of a message that was deleted upstream and kept in history (`Message.isDeleted`), where
 /// AyuGram's Android build puts its own deleted mark before the time as well (`AyuConfig.getDeletedMark()`, which
-/// defaults to a broom there; a bin here). It is part of the time string, so it sits beside the status icon and no
-/// extra node or layout width has to be arranged for it. Метку можно сменить в настройках (`ayugram.deletedMark`).
+/// defaults to a broom there; their desktop fork ships a bin icon, `icons/ayu/trash_bin.png`). Метка идёт в строку
+/// времени, поэтому рисуется текстом рядом с часами и красится в цвет времени.
+///
+/// `\u{FE0E}` (VARIATION SELECTOR-15) заставляет систему рисовать значок как обычный глиф, а не цветной emoji:
+/// так он наследует цвет времени, как иконка в AyuGram, а не светится собственными красками.
 private var deletedMessageMark: String {
     if let value = UserDefaults.standard.object(forKey: "ayugram.deletedMark") as? String {
         return value
     }
-    return "🗑"
+    return "\u{1F5D1}\u{FE0E}"
 }
 
 private func dateStringForDay(strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, timestamp: Int32) -> String {
