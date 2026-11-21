@@ -272,7 +272,8 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     }))
     
     // AyuGram: переключатели сохранения удалённых, локального Premium, метки и пересылки копией.
-    items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 30, text: "AyuGram", icon: PresentationResourcesSettings.powerSaving, action: {
+    // Иконка — логотип AyuGram из Images.xcassets (AyuGramSettingsIcon), а не системная energy saving.
+    items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 30, text: "AyuGram", icon: UIImage(bundleImageName: "AyuGramSettingsIcon"), action: {
         interaction.openSettings(.ayuGram)
     }))
     

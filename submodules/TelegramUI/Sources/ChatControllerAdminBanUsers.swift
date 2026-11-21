@@ -420,9 +420,9 @@ extension ChatControllerImpl {
         
     func beginDeleteMessagesWithUndo(messageIds: Set<EngineMessage.Id>, type: InteractiveMessagesDeletionType) {
         var deleteImmediately = false
-        if case .forEveryone = type {
-            deleteImmediately = true
-        } else if case .scheduledMessages = self.presentationInterfaceState.subject {
+        // AyuGram: удаление «для всех» больше не мгновенное — сообщение остаётся в чате,
+        // показывается тост с «Отменить», и настоящее удаление уходит по его истечении.
+        if case .scheduledMessages = self.presentationInterfaceState.subject {
             deleteImmediately = true
         } else if case .peer(self.context.account.peerId) = self.chatLocation {
             deleteImmediately = true
