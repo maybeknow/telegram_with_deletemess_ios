@@ -346,11 +346,22 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     private var recaptchaClientsBySiteKey: [String: Promise<RecaptchaClient>] = [:]
         
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        precondition(!testIsLaunched)
-        testIsLaunched = true
         // Экранный лог ставится первым: если инициализация ниже закончится чёрным экраном, на нём
         // останутся последние строки.
         AyuOnScreenLog.shared.install()
+        // Приложение падает на старте мгновенно, прочитать лог нельзя. Поэтому запуск ждёт нажатия
+        // "Запустить Telegram": до него виден прошлый лог, после — обычная инициализация (она
+        // повторно вызывает этот же метод, уже проходя мимо ожидания).
+        if AyuOnScreenLog.shared.waitForGate({ [weak self] in
+            guard let self = self else {
+                return
+            }
+            _ = self.application(application, didFinishLaunchingWithOptions: launchOptions)
+        }) {
+            return true
+        }
+        precondition(!testIsLaunched)
+        testIsLaunched = true
         CrashReportCollector.shared.start()
         
         let _ = voipTokenPromise.get().start(next: { token in

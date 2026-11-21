@@ -20,6 +20,10 @@ public final class AyuOnScreenLog {
     private var textView: UITextView?
     private var hideButton: UIButton?
     private var miniButton: UIButton?
+    private var gateButton: UIButton?
+    private var didInstall = false
+    private var gatePassed = false
+    private var gateContinuation: (() -> Void)?
 
     private var fileHandle: FileHandle?
     private var signalFD: Int32 = -1
@@ -36,6 +40,10 @@ public final class AyuOnScreenLog {
     /// Ставит перехват вывода, окно с логом и обработчики падений. Вызывается первым делом
     /// в didFinishLaunching, до любой инициализации.
     public func install() {
+        if self.didInstall {
+            return
+        }
+        self.didInstall = true
         self.openLogFile()
         self.installCrashHandlers()
         self.redirectOutput()
@@ -264,6 +272,48 @@ public final class AyuOnScreenLog {
 
     @objc private func miniTapped() {
         self.setLogVisible(true)
+    }
+
+    /// Приостанавливает запуск до нажатия "Запустить Telegram": приложение падает на старте
+    /// мгновенно, поэтому прочитать прошлый лог иначе невозможно. Возвращает true, если запуск
+    /// отложен; continuation вызовется по нажатию (и повторно вызовет didFinishLaunching).
+    public func waitForGate(_ continuation: @escaping () -> Void) -> Bool {
+        if self.gatePassed {
+            return false
+        }
+        self.gateContinuation = continuation
+        DispatchQueue.main.async {
+            self.showGateButton()
+        }
+        return true
+    }
+
+    private func showGateButton() {
+        self.setLogVisible(true)
+        guard let container = self.logContainer, self.gateButton == nil else {
+            return
+        }
+        let button = UIButton(type: .system)
+        button.setTitle("Запустить Telegram", for: .normal)
+        button.titleLabel?.font = UIFont.boldSystemFont(ofSize: 17.0)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor.systemBlue
+        button.layer.cornerRadius = 10.0
+        button.frame = CGRect(x: 20.0, y: container.bounds.height - 90.0, width: container.bounds.width - 40.0, height: 50.0)
+        button.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
+        button.addTarget(self, action: #selector(self.gateTapped), for: .touchUpInside)
+        container.addSubview(button)
+        self.gateButton = button
+    }
+
+    @objc private func gateTapped() {
+        self.gatePassed = true
+        self.gateButton?.removeFromSuperview()
+        self.gateButton = nil
+        self.setLogVisible(false)
+        let continuation = self.gateContinuation
+        self.gateContinuation = nil
+        continuation?()
     }
 }
 
