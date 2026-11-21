@@ -165,29 +165,13 @@ jobs:
           done
 
       - name: Prepare build configuration
-        # api_id/api_hash в репозитории не лежат: они приходят из секретов Actions
-        # (Settings -> Secrets and variables -> Actions: API_ID, API_HASH).
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
+        # api_id/api_hash берутся из build-system/appstore-configuration.json — чтобы сборка
+        # была детерминированной и значение было видно в репозитории. Секреты репозитория
+        # (API_ID/API_HASH) больше не перекрывают файл.
         run: |
           set -euo pipefail
-          if [ -z "${API_ID:-}" ] || [ -z "${API_HASH:-}" ]; then
-            echo "::error::Нужны секреты API_ID и API_HASH в настройках репозитория"
-            exit 1
-          fi
-          python3 - <<'PY'
-          import json
-          import os
-
-          with open("build-system/appstore-configuration.json", encoding="utf-8") as handle:
-              configuration = json.load(handle)
-          configuration["api_id"] = os.environ["API_ID"]
-          configuration["api_hash"] = os.environ["API_HASH"]
-          with open("/tmp/configuration.json", "w", encoding="utf-8") as handle:
-              json.dump(configuration, handle, indent="\t")
-          PY
-          python3 -c "import json; c = json.load(open('/tmp/configuration.json')); print('api_id:', c['api_id'])"
+          cp build-system/appstore-configuration.json /tmp/configuration.json
+          python3 -c "import json; c = json.load(open('/tmp/configuration.json')); print('api_id:', c['api_id'], 'hash tail:', c['api_hash'][-6:])"
 
       - name: Build
         run: |
