@@ -27,7 +27,7 @@ private func ayuBool(_ key: String, defaultValue: Bool) -> Bool {
     return defaultValue
 }
 
-private final class AyuGramSettingsController: ViewController {
+private final class AyuGramSettingsController: ViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private let context: AccountContext
 
     private var scrollView: UIScrollView?
@@ -36,6 +36,8 @@ private final class AyuGramSettingsController: ViewController {
     private var forwardCopySwitch: UISwitch?
     private var markField: UITextField?
     private var ghostSwitch: UISwitch?
+    private var bannerPreview: UIImageView?
+    private var bannerPreview: UIImageView?
 
     init(context: AccountContext) {
         self.context = context
@@ -91,6 +93,81 @@ private final class AyuGramSettingsController: ViewController {
             isOn: ayuBool(ayuForwardCopyKey, defaultValue: true),
             action: #selector(self.forwardCopyChanged(_:))
         )
+
+        y = self.addSection(title: "БАННЕР ПРОФИЛЯ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+
+        let preview = UIImageView()
+        preview.contentMode = .scaleAspectFill
+        preview.clipsToBounds = true
+        preview.layer.cornerRadius = 10.0
+        preview.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        preview.image = AyuGramBanner.load()
+        preview.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: (scrollView.bounds.width - inset * 2.0) / 1.6)
+        preview.autoresizingMask = [.flexibleWidth]
+        scrollView.addSubview(preview)
+        self.bannerPreview = preview
+        y += preview.frame.height + 8.0
+
+        let chooseButton = UIButton(type: .system)
+        chooseButton.setTitle("Выбрать картинку", for: .normal)
+        chooseButton.setTitleColor(.white, for: .normal)
+        chooseButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        chooseButton.backgroundColor = presentationData.theme.list.itemAccentColor
+        chooseButton.layer.cornerRadius = 10.0
+        chooseButton.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 44.0)
+        chooseButton.autoresizingMask = [.flexibleWidth]
+        chooseButton.addTarget(self, action: #selector(self.chooseBannerTapped), for: .touchUpInside)
+        scrollView.addSubview(chooseButton)
+        y += 44.0 + 8.0
+
+        let clearButton = UIButton(type: .system)
+        clearButton.setTitle("Удалить баннер", for: .normal)
+        clearButton.setTitleColor(presentationData.theme.list.itemDestructiveColor, for: .normal)
+        clearButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0)
+        clearButton.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        clearButton.layer.cornerRadius = 10.0
+        clearButton.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 44.0)
+        clearButton.autoresizingMask = [.flexibleWidth]
+        clearButton.addTarget(self, action: #selector(self.clearBannerTapped), for: .touchUpInside)
+        scrollView.addSubview(clearButton)
+        y += 44.0 + 16.0
+        y = self.addSection(title: "БАННЕР ПРОФИЛЯ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+
+        let preview = UIImageView()
+        preview.contentMode = .scaleAspectFill
+        preview.clipsToBounds = true
+        preview.layer.cornerRadius = 10.0
+        preview.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        preview.image = AyuGramBanner.load()
+        preview.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: (scrollView.bounds.width - inset * 2.0) / 1.6)
+        preview.autoresizingMask = [.flexibleWidth]
+        scrollView.addSubview(preview)
+        self.bannerPreview = preview
+        y += preview.frame.height + 8.0
+
+        let chooseButton = UIButton(type: .system)
+        chooseButton.setTitle("Выбрать картинку", for: .normal)
+        chooseButton.setTitleColor(.white, for: .normal)
+        chooseButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        chooseButton.backgroundColor = presentationData.theme.list.itemAccentColor
+        chooseButton.layer.cornerRadius = 10.0
+        chooseButton.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 44.0)
+        chooseButton.autoresizingMask = [.flexibleWidth]
+        chooseButton.addTarget(self, action: #selector(self.chooseBannerTapped), for: .touchUpInside)
+        scrollView.addSubview(chooseButton)
+        y += 44.0 + 8.0
+
+        let clearButton = UIButton(type: .system)
+        clearButton.setTitle("Удалить баннер", for: .normal)
+        clearButton.setTitleColor(presentationData.theme.list.itemDestructiveColor, for: .normal)
+        clearButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0)
+        clearButton.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        clearButton.layer.cornerRadius = 10.0
+        clearButton.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 44.0)
+        clearButton.autoresizingMask = [.flexibleWidth]
+        clearButton.addTarget(self, action: #selector(self.clearBannerTapped), for: .touchUpInside)
+        scrollView.addSubview(clearButton)
+        y += 44.0 + 16.0
 
         y = self.addSection(title: "ПРИВАТНОСТЬ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
 
@@ -216,6 +293,54 @@ private final class AyuGramSettingsController: ViewController {
 
     @objc private func forwardCopyChanged(_ sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: ayuForwardCopyKey)
+    }
+
+    @objc private func chooseBannerTapped() {
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
+        picker.delegate = self
+        self.present(picker, animated: true, completion: nil)
+    }
+
+    @objc private func clearBannerTapped() {
+        let _ = AyuGramBanner.clear()
+        self.bannerPreview?.image = nil
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        if let image = info[.originalImage] as? UIImage {
+            let _ = AyuGramBanner.save(image: image)
+            self.bannerPreview?.image = AyuGramBanner.load()
+        }
+        picker.dismiss(animated: true, completion: nil)
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true, completion: nil)
+    }
+
+    @objc private func chooseBannerTapped() {
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
+        picker.delegate = self
+        self.present(picker, animated: true, completion: nil)
+    }
+
+    @objc private func clearBannerTapped() {
+        let _ = AyuGramBanner.clear()
+        self.bannerPreview?.image = nil
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        if let image = info[.originalImage] as? UIImage {
+            let _ = AyuGramBanner.save(image: image)
+            self.bannerPreview?.image = AyuGramBanner.load()
+        }
+        picker.dismiss(animated: true, completion: nil)
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true, completion: nil)
     }
 
     @objc private func ghostChanged(_ sender: UISwitch) {
