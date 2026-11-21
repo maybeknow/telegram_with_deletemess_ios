@@ -53,9 +53,13 @@ public final class AyuOnScreenLog {
         self.redirectOutput()
         self.showPreviousSessionTail()
 
-        DispatchQueue.main.async {
-            self.createWindowIfNeeded()
-        }
+        // Окно с логом не создаём: второе UIWindow, поднятое в didFinishLaunching раньше окна
+        // приложения, перехватывает роль ключевого и приложение остаётся с чёрным экраном.
+        // Лог идёт в файл (Файлы → AyuGram → ayu-log.txt), этого достаточно.
+        //
+        // DispatchQueue.main.async {
+        //     self.createWindowIfNeeded()
+        // }
         self.log("[ayu] launch \(Bundle.main.bundleIdentifier ?? "?") \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
 
         // Сердцебиение: если через секунду строка не появилась, значит didFinishLaunching не отдал
