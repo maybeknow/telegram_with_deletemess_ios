@@ -34,7 +34,9 @@ public final class AyuOnScreenLog {
     }
 
     private var logFileURL: URL {
-        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        // Documents: файл виден в приложении «Файлы» (UIFileSharingEnabled), поэтому лог можно
+        // достать с телефона, даже если приложение падает.
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return directory.appendingPathComponent("ayu-log.txt")
     }
 
@@ -323,6 +325,7 @@ public final class AyuOnScreenLog {
 
     @objc private func gateTapped() {
         self.gatePassed = true
+        self.log("[ayu] gate tapped, starting")
         self.gateButton?.removeFromSuperview()
         self.gateButton = nil
         self.wipeButton?.removeFromSuperview()
