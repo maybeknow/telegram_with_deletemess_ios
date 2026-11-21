@@ -15,6 +15,8 @@ private let ayuDeletedMarkKey = "ayugram.deletedMark"
 private let ayuForwardCopyKey = "ayugram.forwardDeletedAsCopy"
 private let ayuGhostModeKey = "ayugram.ghostMode"
 
+private var ayuBannerPresenters: [AyuBannerPickerPresenter] = []
+
 private func ayuBool(_ key: String, defaultValue: Bool) -> Bool {
     if let value = UserDefaults.standard.object(forKey: key) as? Bool {
         return value
@@ -26,6 +28,8 @@ private enum AyuGramSection: Int32 {
     case messages
     case premium
     case privacy
+    case banner
+    case mark
 }
 
 private final class AyuGramSettingsControllerArguments {
@@ -33,6 +37,8 @@ private final class AyuGramSettingsControllerArguments {
     let updateForwardCopy: (Bool) -> Void
     let updateFakePremium: (Bool) -> Void
     let updateGhostMode: (Bool) -> Void
+    var presentBannerPicker: (() -> Void)?
+    var presentMarkEditor: (() -> Void)?
 
     init(
         updateKeepDeleted: @escaping (Bool) -> Void,
@@ -61,6 +67,14 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
     case ghostMode(Bool)
     case privacyFooter
 
+    case bannerHeader
+    case banner
+    case bannerFooter
+
+    case markHeader
+    case mark
+    case markFooter
+
     var section: ItemListSectionId {
         switch self {
         case .messagesHeader, .keepDeleted, .forwardCopy, .messagesFooter:
@@ -69,6 +83,10 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             return AyuGramSection.premium.rawValue
         case .privacyHeader, .ghostMode, .privacyFooter:
             return AyuGramSection.privacy.rawValue
+        case .bannerHeader, .banner, .bannerFooter:
+            return AyuGramSection.banner.rawValue
+        case .markHeader, .mark, .markFooter:
+            return AyuGramSection.mark.rawValue
         }
     }
 
@@ -84,6 +102,12 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
         case .privacyHeader: return 7
         case .ghostMode: return 8
         case .privacyFooter: return 9
+        case .bannerHeader: return 10
+        case .banner: return 11
+        case .bannerFooter: return 12
+        case .markHeader: return 13
+        case .mark: return 14
+        case .markFooter: return 15
         }
     }
 
@@ -122,6 +146,23 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             })
         case .privacyFooter:
             return ItemListTextItem(presentationData: presentationData, text: .markdown("Аккаунт всегда офлайн для собеседников: вместо «в сети» серверу отправляется offline."), sectionId: self.section)
+        case .bannerHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "БАННЕР ПРОФИЛЯ", sectionId: self.section)
+        case .banner:
+            return ItemListDisclosureItem(presentationData: presentationData, title: "Баннер профиля", label: AyuGramBanner.hasBanner ? "Выбран" : "Не выбран", sectionId: self.section, style: .blocks, action: {
+                arguments.presentBannerPicker?()
+            })
+        case .bannerFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .markdown("Своя картинка в шапке профиля: обрезается под пропорции шапки и хранится только на этом устройстве."), sectionId: self.section)
+        case .markHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "МЕТКА УДАЛЁННОГО", sectionId: self.section)
+        case .mark:
+            let mark = (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}"
+            return ItemListDisclosureItem(presentationData: presentationData, title: "Текст метки", label: mark, sectionId: self.section, style: .blocks, action: {
+                arguments.presentMarkEditor?()
+            })
+        case .markFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .markdown("Показывается перед временем у сохранённого удалённого сообщения. Пустое поле возвращает корзину."), sectionId: self.section)
         }
     }
 }
@@ -141,6 +182,14 @@ private func ayuGramSettingsControllerEntries(presentationData: PresentationData
     entries.append(.privacyHeader)
     entries.append(.ghostMode(ayuBool(ayuGhostModeKey, defaultValue: false)))
     entries.append(.privacyFooter)
+
+    entries.append(.bannerHeader)
+    entries.append(.banner)
+    entries.append(.bannerFooter)
+
+    entries.append(.markHeader)
+    entries.append(.mark)
+    entries.append(.markFooter)
 
     return entries
 }
@@ -187,5 +236,67 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
 
     let controller = ItemListController(context: context, state: signal)
     controller.navigationPresentation = .modal
+
+    // Выбор картинки баннера: презентер держим в статике, иначе он умрёт вместе с замыканием.
+    let bannerPresenter = AyuBannerPickerPresenter(controller: controller)
+    ayuBannerPresenters.append(bannerPresenter)
+    arguments.presentBannerPicker = { [weak bannerPresenter] in
+        bannerPresenter?.present()
+    }
+
+    // Метка удалённого: обычное текстовое поле в алерте, значение хранится в UserDefaults
+    // и переживает перезапуск приложения.
+    arguments.presentMarkEditor = { [weak controller] in
+        guard let controller else {
+            return
+        }
+        let current = (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}"
+        let alert = UIAlertController(title: "Метка удалённого", message: "Текст перед временем у сохранённого сообщения", preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = current
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "Сохранить", style: .default, handler: { _ in
+            let value = alert.textFields?.first?.text ?? ""
+            UserDefaults.standard.set(value.isEmpty ? "\u{1F5D1}\u{FE0E}" : value, forKey: ayuDeletedMarkKey)
+        }))
+        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive, handler: { _ in
+            UserDefaults.standard.set("\u{1F5D1}\u{FE0E}", forKey: ayuDeletedMarkKey)
+        }))
+        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel, handler: nil))
+        controller.present(alert, animated: true, completion: nil)
+    }
+
     return controller
+}
+
+
+/// Выбор картинки для баннера: держит ссылку на контроллер и сохраняет выбранное фото.
+private final class AyuBannerPickerPresenter: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    private weak var controller: ViewController?
+
+    init(controller: ViewController) {
+        self.controller = controller
+    }
+
+    func present() {
+        guard let controller else {
+            return
+        }
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
+        picker.delegate = self
+        controller.present(picker, animated: true, completion: nil)
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        if let image = info[.originalImage] as? UIImage {
+            let _ = AyuGramBanner.save(image: image)
+        }
+        picker.dismiss(animated: true, completion: nil)
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true, completion: nil)
+    }
 }

@@ -17,6 +17,8 @@ private final class AccountPresenceManagerImpl {
     private var onlineTimer: SignalKitTimer?
     
     private var wasOnline: Bool = false
+    private var lastAppliedGhostMode: Bool = false
+    private var ghostModeTimer: SignalKitTimer?
     
     init(queue: Queue, shouldKeepOnlinePresence: Signal<Bool, NoError>, network: Network) {
         self.queue = queue
@@ -28,11 +30,25 @@ private final class AccountPresenceManagerImpl {
             guard let `self` = self else {
                 return
             }
-            if self.wasOnline != value {
+            if self.wasOnline != value || self.lastAppliedGhostMode != UserDefaults.standard.bool(forKey: "ayugram.ghostMode") {
                 self.wasOnline = value
                 self.updatePresence(value)
             }
         })
+        
+        // Ghost mode переключается в настройках на ходу: раз в две секунды сверяем флаг и,
+        // если он изменился, отправляем присутствие заново — без перезапуска приложения.
+        let ghostTimer = SignalKitTimer(timeout: 2.0, repeat: true, completion: { [weak self] in
+            guard let strongSelf = self else {
+                return
+            }
+            let ghost = UserDefaults.standard.bool(forKey: "ayugram.ghostMode")
+            if ghost != strongSelf.lastAppliedGhostMode {
+                strongSelf.updatePresence(strongSelf.wasOnline)
+            }
+        }, queue: self.queue)
+        ghostTimer.start()
+        self.ghostModeTimer = ghostTimer
     }
     
     deinit {
