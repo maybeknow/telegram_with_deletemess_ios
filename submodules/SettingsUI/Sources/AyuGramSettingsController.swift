@@ -38,18 +38,20 @@ private final class AyuGramSettingsControllerArguments {
     let updateFakePremium: (Bool) -> Void
     let updateGhostMode: (Bool) -> Void
     var presentBannerPicker: (() -> Void)?
-    var presentMarkEditor: (() -> Void)?
+    let updateMark: (String) -> Void
 
     init(
         updateKeepDeleted: @escaping (Bool) -> Void,
         updateForwardCopy: @escaping (Bool) -> Void,
         updateFakePremium: @escaping (Bool) -> Void,
-        updateGhostMode: @escaping (Bool) -> Void
+        updateGhostMode: @escaping (Bool) -> Void,
+        updateMark: @escaping (String) -> Void
     ) {
         self.updateKeepDeleted = updateKeepDeleted
         self.updateForwardCopy = updateForwardCopy
         self.updateFakePremium = updateFakePremium
         self.updateGhostMode = updateGhostMode
+        self.updateMark = updateMark
     }
 }
 
@@ -69,10 +71,11 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
 
     case bannerHeader
     case banner
+    case bannerButton
     case bannerFooter
 
     case markHeader
-    case mark
+    case mark(String)
     case markFooter
 
     var section: ItemListSectionId {
@@ -83,7 +86,7 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             return AyuGramSection.premium.rawValue
         case .privacyHeader, .ghostMode, .privacyFooter:
             return AyuGramSection.privacy.rawValue
-        case .bannerHeader, .banner, .bannerFooter:
+        case .bannerHeader, .banner, .bannerButton, .bannerFooter:
             return AyuGramSection.banner.rawValue
         case .markHeader, .mark, .markFooter:
             return AyuGramSection.mark.rawValue
@@ -105,6 +108,7 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
         case .bannerHeader: return 10
         case .banner: return 11
         case .bannerFooter: return 12
+        case .bannerButton: return 16
         case .markHeader: return 13
         case .mark: return 14
         case .markFooter: return 15
@@ -152,14 +156,19 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, title: "Баннер профиля", label: AyuGramBanner.hasBanner ? "Выбран" : "Не выбран", sectionId: self.section, style: .blocks, action: {
                 arguments.presentBannerPicker?()
             })
+        case .bannerButton:
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: AyuGramBanner.hasBanner ? "Заменить баннер" : "Выбрать баннер", kind: .generic, alignment: .center, sectionId: self.section, style: .blocks, action: {
+                arguments.presentBannerPicker?()
+            })
         case .bannerFooter:
             return ItemListTextItem(presentationData: presentationData, text: .markdown("Своя картинка в шапке профиля: обрезается под пропорции шапки и хранится только на этом устройстве."), sectionId: self.section)
         case .markHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "МЕТКА УДАЛЁННОГО", sectionId: self.section)
-        case .mark:
-            let mark = (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}"
-            return ItemListDisclosureItem(presentationData: presentationData, title: "Текст метки", label: mark, sectionId: self.section, style: .blocks, action: {
-                arguments.presentMarkEditor?()
+        case let .mark(value):
+            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Текст метки"), text: value, placeholder: "\u{1F5D1}\u{FE0E}", clearType: .always, maxLength: 4, sectionId: self.section, textUpdated: { value in
+                arguments.updateMark(value)
+            }, action: {
+                arguments.updateMark(value)
             })
         case .markFooter:
             return ItemListTextItem(presentationData: presentationData, text: .markdown("Показывается перед временем у сохранённого удалённого сообщения. Пустое поле возвращает корзину."), sectionId: self.section)
@@ -185,10 +194,11 @@ private func ayuGramSettingsControllerEntries(presentationData: PresentationData
 
     entries.append(.bannerHeader)
     entries.append(.banner)
+    entries.append(.bannerButton)
     entries.append(.bannerFooter)
 
     entries.append(.markHeader)
-    entries.append(.mark)
+    entries.append(.mark((UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}"))
     entries.append(.markFooter)
 
     return entries
@@ -209,6 +219,9 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
         },
         updateGhostMode: { value in
             UserDefaults.standard.set(value, forKey: ayuGhostModeKey)
+        },
+        updateMark: { value in
+            UserDefaults.standard.set(value.isEmpty ? "\u{1F5D1}\u{FE0E}" : value, forKey: ayuDeletedMarkKey)
         }
     )
 
