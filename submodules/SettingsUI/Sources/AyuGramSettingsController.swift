@@ -22,100 +22,167 @@ private func ayuBool(_ key: String, defaultValue: Bool) -> Bool {
     return defaultValue
 }
 
-/// Экран «Настройки → AyuGram» на штатных элементах ItemListUI, поэтому размеры строк,
-/// отступы, шрифты и поведение совпадают с остальными настройками Telegram.
+private enum AyuGramSection: Int32 {
+    case messages
+    case premium
+    case privacy
+}
+
+private final class AyuGramSettingsControllerArguments {
+    let updateKeepDeleted: (Bool) -> Void
+    let updateForwardCopy: (Bool) -> Void
+    let updateFakePremium: (Bool) -> Void
+    let updateGhostMode: (Bool) -> Void
+
+    init(
+        updateKeepDeleted: @escaping (Bool) -> Void,
+        updateForwardCopy: @escaping (Bool) -> Void,
+        updateFakePremium: @escaping (Bool) -> Void,
+        updateGhostMode: @escaping (Bool) -> Void
+    ) {
+        self.updateKeepDeleted = updateKeepDeleted
+        self.updateForwardCopy = updateForwardCopy
+        self.updateFakePremium = updateFakePremium
+        self.updateGhostMode = updateGhostMode
+    }
+}
+
+private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
+    case messagesHeader
+    case keepDeleted(Bool)
+    case forwardCopy(Bool)
+    case messagesFooter
+
+    case premiumHeader
+    case fakePremium(Bool)
+    case premiumFooter
+
+    case privacyHeader
+    case ghostMode(Bool)
+    case privacyFooter
+
+    var section: ItemListSectionId {
+        switch self {
+        case .messagesHeader, .keepDeleted, .forwardCopy, .messagesFooter:
+            return AyuGramSection.messages.rawValue
+        case .premiumHeader, .fakePremium, .premiumFooter:
+            return AyuGramSection.premium.rawValue
+        case .privacyHeader, .ghostMode, .privacyFooter:
+            return AyuGramSection.privacy.rawValue
+        }
+    }
+
+    var stableId: Int32 {
+        switch self {
+        case .messagesHeader: return 0
+        case .keepDeleted: return 1
+        case .forwardCopy: return 2
+        case .messagesFooter: return 3
+        case .premiumHeader: return 4
+        case .fakePremium: return 5
+        case .premiumFooter: return 6
+        case .privacyHeader: return 7
+        case .ghostMode: return 8
+        case .privacyFooter: return 9
+        }
+    }
+
+    static func <(lhs: AyuGramSettingsControllerEntry, rhs: AyuGramSettingsControllerEntry) -> Bool {
+        return lhs.stableId < rhs.stableId
+    }
+
+    func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
+        let arguments = arguments as! AyuGramSettingsControllerArguments
+        switch self {
+        case .messagesHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "СООБЩЕНИЯ", sectionId: self.section)
+        case let .keepDeleted(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Сохранять удалённые сообщения", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateKeepDeleted(value)
+            })
+        case let .forwardCopy(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Пересылать удалённые копией", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateForwardCopy(value)
+            })
+        case .messagesFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .markdown("Удалённое собеседником сообщение остаётся в чате с меткой; пересылка уходит копией, потому что сервер исходное сообщение уже не знает."), sectionId: self.section)
+        case .premiumHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "ПРЕМИУМ", sectionId: self.section)
+        case let .fakePremium(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Локальный Premium", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateFakePremium(value)
+            })
+        case .premiumFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .markdown("Клиент считает аккаунт премиумом, сервер — нет. После переключения перезапусти приложение."), sectionId: self.section)
+        case .privacyHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "ПРИВАТНОСТЬ", sectionId: self.section)
+        case let .ghostMode(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Ghost mode", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateGhostMode(value)
+            })
+        case .privacyFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .markdown("Аккаунт всегда офлайн для собеседников: вместо «в сети» серверу отправляется offline."), sectionId: self.section)
+        }
+    }
+}
+
+private func ayuGramSettingsControllerEntries(presentationData: PresentationData) -> [AyuGramSettingsControllerEntry] {
+    var entries: [AyuGramSettingsControllerEntry] = []
+
+    entries.append(.messagesHeader)
+    entries.append(.keepDeleted(ayuBool(ayuKeepDeletedKey, defaultValue: true)))
+    entries.append(.forwardCopy(ayuBool(ayuForwardCopyKey, defaultValue: true)))
+    entries.append(.messagesFooter)
+
+    entries.append(.premiumHeader)
+    entries.append(.fakePremium(ayuBool(ayuFakePremiumKey, defaultValue: true)))
+    entries.append(.premiumFooter)
+
+    entries.append(.privacyHeader)
+    entries.append(.ghostMode(ayuBool(ayuGhostModeKey, defaultValue: false)))
+    entries.append(.privacyFooter)
+
+    return entries
+}
+
+/// Экран «Настройки → AyuGram»: те же строки, заголовки и отступы, что у «Архива» и «Оформления»,
+/// потому что это те же элементы ItemListUI.
 public func ayuGramSettingsController(context: AccountContext) -> ViewController {
+    let arguments = AyuGramSettingsControllerArguments(
+        updateKeepDeleted: { value in
+            UserDefaults.standard.set(value, forKey: ayuKeepDeletedKey)
+        },
+        updateForwardCopy: { value in
+            UserDefaults.standard.set(value, forKey: ayuForwardCopyKey)
+        },
+        updateFakePremium: { value in
+            UserDefaults.standard.set(value, forKey: ayuFakePremiumKey)
+        },
+        updateGhostMode: { value in
+            UserDefaults.standard.set(value, forKey: ayuGhostModeKey)
+        }
+    )
+
     let signal = context.sharedContext.presentationData
+    |> deliverOnMainQueue
     |> map { presentationData -> (ItemListControllerState, (ItemListNodeState, Any)) in
         var presentationData = presentationData
         presentationData = presentationData.withUpdated(theme: presentationData.theme.withModalBlocksBackground())
 
-        let listPresentationData = ItemListPresentationData(presentationData)
-
-        var entries: [ItemListItem] = []
-
-        entries.append(ItemListSwitchItem(
-            presentationData: listPresentationData,
-            title: "Сохранять удалённые сообщения",
-            text: "Удалённое собеседником сообщение остаётся в чате с меткой",
-            value: ayuBool(ayuKeepDeletedKey, defaultValue: true),
-            sectionId: 0,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuKeepDeletedKey)
-            }
-        ))
-        entries.append(ItemListSwitchItem(
-            presentationData: listPresentationData,
-            title: "Пересылать удалённые копией",
-            text: "Сервер не знает удалённое сообщение, поэтому уходит копия",
-            value: ayuBool(ayuForwardCopyKey, defaultValue: true),
-            sectionId: 0,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuForwardCopyKey)
-            }
-        ))
-
-        entries.append(ItemListSwitchItem(
-            presentationData: listPresentationData,
-            title: "Локальный Premium",
-            text: "Клиент считает аккаунт премиумом, сервер — нет",
-            value: ayuBool(ayuFakePremiumKey, defaultValue: true),
-            sectionId: 1,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuFakePremiumKey)
-            }
-        ))
-        entries.append(ItemListSwitchItem(
-            presentationData: listPresentationData,
-            title: "Ghost mode",
-            text: "Аккаунт всегда офлайн для собеседников",
-            value: ayuBool(ayuGhostModeKey, defaultValue: false),
-            sectionId: 1,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuGhostModeKey)
-            }
-        ))
-
-        entries.append(ItemListDisclosureItem(
-            presentationData: listPresentationData,
-            title: "Метка удалённого",
-            label: (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}",
-            sectionId: 2,
-            style: .blocks,
-            action: {
-                // Сброс к метке по умолчанию: поле ввода в этом наборе элементов отсутствует,
-                // поэтому нажатие возвращает стандартную корзину AyuGram.
-                UserDefaults.standard.set("\u{1F5D1}\u{FE0E}", forKey: ayuDeletedMarkKey)
-            }
-        ))
-        entries.append(ItemListDisclosureItem(
-            presentationData: listPresentationData,
-            title: "Баннер профиля",
-            label: AyuGramBanner.hasBanner ? "Выбран" : "Не выбран",
-            sectionId: 2,
-            style: .blocks,
-            action: {
-            }
-        ))
-
         let controllerState = ItemListControllerState(
-            presentationData: listPresentationData,
+            presentationData: ItemListPresentationData(presentationData),
             title: .text("AyuGram"),
             leftNavigationButton: nil,
             rightNavigationButton: nil,
             backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back)
         )
         let listState = ItemListNodeState(
-            presentationData: listPresentationData,
-            entries: entries,
+            presentationData: ItemListPresentationData(presentationData),
+            entries: ayuGramSettingsControllerEntries(presentationData: presentationData),
             style: .blocks,
             animateChanges: true
         )
-        return (controllerState, (listState, 0 as Any))
+        return (controllerState, (listState, arguments))
     }
 
     let controller = ItemListController(context: context, state: signal)
