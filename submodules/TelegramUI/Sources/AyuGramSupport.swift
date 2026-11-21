@@ -28,6 +28,7 @@ public final class AyuOnScreenLog {
 
     private var fileHandle: FileHandle?
     private var signalFD: Int32 = -1
+    private var pipeReadFD: Int32 = -1
     private var sceneRetryCount: Int = 0
 
     private init() {
@@ -111,6 +112,7 @@ public final class AyuOnScreenLog {
         close(fds[1])
 
         let readFD = fds[0]
+        self.pipeReadFD = readFD
         let queue = DispatchQueue(label: "AyuGram.log.read")
         queue.async {
             var buffer = [UInt8](repeating: 0, count: 8192)
@@ -182,6 +184,22 @@ public final class AyuOnScreenLog {
     }
 
     private func writeSignal(_ text: String) {
+        // Обработчик сигнала срабатывает раньше, чем фоновый читатель успевает забрать из канала
+        // уже записанное сообщение Swift ("Fatal error: ..."), поэтому сначала сливаем канал в файл:
+        // read/write — async-signal-safe, в отличие от всего остального.
+        let pipeFD = self.pipeReadFD
+        if pipeFD >= 0 {
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while true {
+                let count = read(pipeFD, &buffer, buffer.count)
+                if count <= 0 {
+                    break
+                }
+                if self.signalFD >= 0 {
+                    _ = write(self.signalFD, buffer, count)
+                }
+            }
+        }
         let fd = self.signalFD
         guard fd >= 0 else {
             return
