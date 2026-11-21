@@ -204,6 +204,18 @@ public final class AyuOnScreenLog {
         guard fd >= 0 else {
             return
         }
+        // Стек прямо из обработчика сигнала: backtrace_symbols_fd не выделяет память и пишет в fd,
+        // поэтому переживает трап. Имена модулей и смещения видно даже без символизации.
+        var frames = [UnsafeMutableRawPointer?](repeating: nil, count: 64)
+        let frameCount = frames.withUnsafeMutableBufferPointer { buffer -> Int32 in
+            return backtrace(buffer.baseAddress, Int32(buffer.count))
+        }
+        if frameCount > 0 {
+            _ = frames.withUnsafeMutableBufferPointer { buffer -> Int32 in
+                backtrace_symbols_fd(buffer.baseAddress, frameCount, fd)
+                return 0
+            }
+        }
         text.withCString { pointer in
             _ = write(fd, pointer, strlen(pointer))
         }
