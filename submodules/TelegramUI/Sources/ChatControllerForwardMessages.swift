@@ -163,7 +163,9 @@ extension ChatControllerImpl {
                             // Сообщение, удалённое собеседником, сервер уже не знает: обычный forward
                             // возвращает ошибку и в чате загорается красная пометка. Поэтому для
                             // сохранённых удалённых сообщений отправляем копию содержимого.
-                            if message.flags.contains(.IsDeleted) {
+                            let isDeleted = message.flags.contains(.IsDeleted) || message.isDeleted
+                            AyuOnScreenLog.shared.log("[ayu] forward \(message.id.id) deleted=\(isDeleted) text=\(message.text.count) media=\(message.media.count)")
+                            if isDeleted {
                                 return .message(text: message.text, attributes: attributes, inlineStickers: [:], mediaReference: message.media.first.flatMap(AnyMediaReference.standalone), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: message.groupingKey, correlationId: nil, bubbleUpEmojiOrStickersets: [])
                             }
                             return .forward(source: message.id, threadId: nil, grouping: .auto, attributes: attributes, correlationId: nil)

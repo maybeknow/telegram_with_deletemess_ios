@@ -894,6 +894,20 @@ public func resendMessages(account: Account, messageIds: [MessageId]) -> Signal<
 }
 
 func enqueueMessages(transaction: Transaction, account: Account, peerId: PeerId, messages: [(Bool, EnqueueMessage)], disableAutoremove: Bool = false, transformGroupingKeysWithPeerId: Bool = false) -> [MessageId?] {
+    // Сохранённое удалённое сообщение сервер уже не знает: forward по его id всегда падает с ошибкой
+    // и в чате появляется красная пометка. Такой forward подменяем копией содержимого (текст и
+    // первое медиа) — работает для любого пути пересылки, потому что все они идут через эту функцию.
+    var messages = messages
+    messages = messages.map { entry -> (Bool, EnqueueMessage) in
+        guard case let .forward(source, threadId, _, attributes, correlationId) = entry.1 else {
+            return entry
+        }
+        guard let sourceMessage = transaction.getMessage(source), sourceMessage.isDeleted else {
+            return entry
+        }
+        let copy: EnqueueMessage = .message(text: sourceMessage.text, attributes: attributes, inlineStickers: [:], mediaReference: sourceMessage.media.first.flatMap(AnyMediaReference.standalone), threadId: threadId, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: correlationId, bubbleUpEmojiOrStickersets: [])
+        return (entry.0, copy)
+    }
     /**
      * If it is a support account, mark messages as read here as they are
      * not marked as read when chat is opened.
