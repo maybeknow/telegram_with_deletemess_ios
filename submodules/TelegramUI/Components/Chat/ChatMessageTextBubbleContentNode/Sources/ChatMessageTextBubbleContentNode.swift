@@ -595,19 +595,9 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                     attributedText = NSAttributedString(string: " ", font: textFont, textColor: messageTheme.primaryTextColor)
                 }
                 
-                if item.message.isDeleted {
-                    // The message was deleted upstream and kept locally (`Message.isDeleted`, see
-                    // MessageHistoryTable.setMessagesDeletedFlag): draw it struck through, in the secondary colour, so
-                    // it reads as a kept copy rather than as a live message. The text itself is the one stored with the
-                    // message, so nothing has to be fetched to show it.
-                    let deletedText = NSMutableAttributedString(attributedString: attributedText)
-                    let fullRange = NSRange(location: 0, length: deletedText.length)
-                    deletedText.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
-                    deletedText.addAttribute(.strikethroughColor, value: messageTheme.secondaryTextColor, range: fullRange)
-                    deletedText.addAttribute(.foregroundColor, value: messageTheme.secondaryTextColor, range: fullRange)
-                    attributedText = deletedText
-                }
-                
+                // Удалённое сообщение больше не перечёркиваем: пометка уже стоит во времени
+                // (значок корзины), а текст остаётся читаемым как обычный.
+
                 // The custom-emoji attribute is not re-applied here: `stringWithAppliedEntities`
                 // already attached it, using ranges adjusted for the substitutions it performs
                 // (`.FormattedDate` renders to text of a different length). An entity's own offsets
