@@ -1,13 +1,18 @@
 import Foundation
 import UIKit
+import AsyncDisplayKit
 import Display
-import SwiftSignalKit
 import TelegramCore
 import TelegramPresentationData
-import TelegramUIPreferences
-import ItemListUI
-import PresentationDataUtils
 import AccountContext
+
+/// Экран настроек AyuGram. Открывается из «Настройки → AyuGram» (см. `openSettings(section: .ayuGram)`).
+///
+/// Значения читаются и пишутся прямо в `UserDefaults` по тем же ключам, что использует ядро
+/// (`AyuGramPremium.isEnabled`, `StateReplay+Messages.swift`), поэтому экран не зависит от TelegramUI.
+public func ayuGramSettingsController(context: AccountContext) -> ViewController {
+    return AyuGramSettingsController(context: context)
+}
 
 private let ayuKeepDeletedKey = "ayugram.keepDeletedMessages"
 private let ayuFakePremiumKey = "ayugram.fakePremium"
@@ -22,116 +27,266 @@ private func ayuBool(_ key: String, defaultValue: Bool) -> Bool {
     return defaultValue
 }
 
-private enum AyuGramSection: Int32 {
-    case messages
-    case privacy
-    case mark
-    case banner
-}
+private final class AyuGramSettingsController: ViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    private let context: AccountContext
 
-/// Экран «Настройки → AyuGram». Собран на `ItemListController`, как «Архив» и «Оформление»:
-/// те же блоки, отступы и шрифты, потому что это те же элементы списка.
-public func ayuGramSettingsController(context: AccountContext) -> ViewController {
-    let signal = context.sharedContext.presentationData
-    |> deliverOnMainQueue
-    |> map { presentationData -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        var presentationData = presentationData
-        presentationData = presentationData.withUpdated(theme: presentationData.theme.withModalBlocksBackground())
+    private var scrollView: UIScrollView?
+    private var keepDeletedSwitch: UISwitch?
+    private var fakePremiumSwitch: UISwitch?
+    private var forwardCopySwitch: UISwitch?
+    private var markField: UITextField?
+    private var ghostSwitch: UISwitch?
+    private var bannerPreview: UIImageView?
 
-        var messages: [ItemListEntry] = []
-        messages.append(ItemListSwitchItem(
-            presentationData: ItemListPresentationData(presentationData),
-            title: "Сохранять удалённые сообщения",
-            text: "Сообщение, удалённое собеседником, остаётся в чате с меткой",
-            value: ayuBool(ayuKeepDeletedKey, defaultValue: true),
-            sectionId: AyuGramSection.messages.rawValue,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuKeepDeletedKey)
-            }
-        ))
-        messages.append(ItemListSwitchItem(
-            presentationData: ItemListPresentationData(presentationData),
-            title: "Пересылать удалённые копией",
-            text: "Сервер уже не знает удалённое сообщение, поэтому уходит копия",
-            value: ayuBool(ayuForwardCopyKey, defaultValue: true),
-            sectionId: AyuGramSection.messages.rawValue,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuForwardCopyKey)
-            }
-        ))
+    init(context: AccountContext) {
+        self.context = context
 
-        var privacy: [ItemListEntry] = []
-        privacy.append(ItemListSwitchItem(
-            presentationData: ItemListPresentationData(presentationData),
-            title: "Локальный Premium",
-            text: "Клиент считает аккаунт премиумом, сервер — нет",
-            value: ayuBool(ayuFakePremiumKey, defaultValue: true),
-            sectionId: AyuGramSection.privacy.rawValue,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuFakePremiumKey)
-            }
-        ))
-        privacy.append(ItemListSwitchItem(
-            presentationData: ItemListPresentationData(presentationData),
-            title: "Ghost mode",
-            text: "Аккаунт всегда офлайн для собеседников",
-            value: ayuBool(ayuGhostModeKey, defaultValue: false),
-            sectionId: AyuGramSection.privacy.rawValue,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value, forKey: ayuGhostModeKey)
-            }
-        ))
+        super.init(navigationBarPresentationData: nil)
 
-        var mark: [ItemListEntry] = []
-        mark.append(ItemListTextInputItem(
-            presentationData: ItemListPresentationData(presentationData),
-            title: "Метка удалённого",
-            text: (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}",
-            placeholder: "\u{1F5D1}\u{FE0E}",
-            sectionId: AyuGramSection.mark.rawValue,
-            style: .blocks,
-            updated: { value in
-                UserDefaults.standard.set(value.isEmpty ? "\u{1F5D1}\u{FE0E}" : value, forKey: ayuDeletedMarkKey)
-            }
-        ))
-
-        var banner: [ItemListEntry] = []
-        banner.append(ItemListDisclosureItem(
-            presentationData: ItemListPresentationData(presentationData),
-            title: "Баннер профиля",
-            label: AyuGramBanner.hasBanner ? "Выбран" : "Не выбран",
-            sectionId: AyuGramSection.banner.rawValue,
-            style: .blocks,
-            action: {
-            }
-        ))
-
-        let controllerState = ItemListControllerState(
-            presentationData: ItemListPresentationData(presentationData),
-            title: .text("AyuGram"),
-            leftNavigationButton: nil,
-            rightNavigationButton: nil,
-            backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back)
-        )
-        let listState = ItemListNodeState(
-            presentationData: ItemListPresentationData(presentationData),
-            entries: [
-                ItemListSection(id: AyuGramSection.messages.rawValue, header: .text("СООБЩЕНИЯ"), items: messages),
-                ItemListSection(id: AyuGramSection.privacy.rawValue, header: .text("ПРИВАТНОСТЬ И ПРЕМИУМ"), items: privacy),
-                ItemListSection(id: AyuGramSection.mark.rawValue, header: .text("МЕТКА УДАЛЁННОГО"), items: mark),
-                ItemListSection(id: AyuGramSection.banner.rawValue, header: .text("БАННЕР ПРОФИЛЯ"), items: banner)
-            ],
-            style: .blocks,
-            animateChanges: true
-        )
-        return (controllerState, (listState, 0 as Any))
+        self.title = "AyuGram"
+        self.statusBar.statusBarStyle = .Black
     }
 
-    let controller = ItemListController(context: context, state: signal)
-    controller.navigationPresentation = .modal
-    return controller
+    required init(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadDisplayNode() {
+        self.displayNode = ASDisplayNode()
+        self.displayNode.backgroundColor = self.context.sharedContext.currentPresentationData.with { $0 }.theme.list.blocksBackgroundColor
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+        let scrollView = UIScrollView()
+        scrollView.alwaysBounceVertical = true
+        scrollView.backgroundColor = presentationData.theme.list.blocksBackgroundColor
+        self.view.addSubview(scrollView)
+        self.scrollView = scrollView
+
+        var y: CGFloat = 16.0
+        let inset: CGFloat = 16.0
+
+        y = self.addSection(title: "УДАЛЁННЫЕ СООБЩЕНИЯ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+
+        self.keepDeletedSwitch = self.addRow(
+            title: "Сохранять удалённые сообщения",
+            detail: "Сообщение, удалённое собеседником, остаётся в чате",
+            scrollView: scrollView,
+            y: &y,
+            inset: inset,
+            presentationData: presentationData,
+            isOn: ayuBool(ayuKeepDeletedKey, defaultValue: true),
+            action: #selector(self.keepDeletedChanged(_:))
+        )
+
+        self.forwardCopySwitch = self.addRow(
+            title: "Пересылать удалённые копией",
+            detail: "Вместо forward отправляется копия текста",
+            scrollView: scrollView,
+            y: &y,
+            inset: inset,
+            presentationData: presentationData,
+            isOn: ayuBool(ayuForwardCopyKey, defaultValue: true),
+            action: #selector(self.forwardCopyChanged(_:))
+        )
+
+        y = self.addSection(title: "БАННЕР ПРОФИЛЯ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+
+        let preview = UIImageView()
+        preview.contentMode = .scaleAspectFill
+        preview.clipsToBounds = true
+        preview.layer.cornerRadius = 10.0
+        preview.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        preview.image = AyuGramBanner.load()
+        preview.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: (scrollView.bounds.width - inset * 2.0) / 1.6)
+        preview.autoresizingMask = [.flexibleWidth]
+        scrollView.addSubview(preview)
+        self.bannerPreview = preview
+        y += preview.frame.height + 8.0
+
+        let chooseButton = UIButton(type: .system)
+        chooseButton.setTitle("Выбрать картинку", for: .normal)
+        chooseButton.setTitleColor(.white, for: .normal)
+        chooseButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0, weight: .semibold)
+        chooseButton.backgroundColor = presentationData.theme.list.itemAccentColor
+        chooseButton.layer.cornerRadius = 10.0
+        chooseButton.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 44.0)
+        chooseButton.autoresizingMask = [.flexibleWidth]
+        chooseButton.addTarget(self, action: #selector(self.chooseBannerTapped), for: .touchUpInside)
+        scrollView.addSubview(chooseButton)
+        y += 44.0 + 8.0
+
+        let clearButton = UIButton(type: .system)
+        clearButton.setTitle("Удалить баннер", for: .normal)
+        clearButton.setTitleColor(presentationData.theme.list.itemDestructiveColor, for: .normal)
+        clearButton.titleLabel?.font = UIFont.systemFont(ofSize: 17.0)
+        clearButton.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        clearButton.layer.cornerRadius = 10.0
+        clearButton.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 44.0)
+        clearButton.autoresizingMask = [.flexibleWidth]
+        clearButton.addTarget(self, action: #selector(self.clearBannerTapped), for: .touchUpInside)
+        scrollView.addSubview(clearButton)
+        y += 44.0 + 16.0
+
+        y = self.addSection(title: "ПРИВАТНОСТЬ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+
+        self.ghostSwitch = self.addRow(
+            title: "Ghost mode",
+            detail: "Аккаунт всегда офлайн для собеседников",
+            scrollView: scrollView,
+            y: &y,
+            inset: inset,
+            presentationData: presentationData,
+            isOn: ayuBool(ayuGhostModeKey, defaultValue: false),
+            action: #selector(self.ghostChanged(_:))
+        )
+
+        y = self.addSection(title: "ПРЕМИУМ", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+        self.fakePremiumSwitch = self.addRow(
+            title: "Локальный Premium",
+            detail: "Клиент считает аккаунт премиумом, сервер — нет",
+            scrollView: scrollView,
+            y: &y,
+            inset: inset,
+            presentationData: presentationData,
+            isOn: ayuBool(ayuFakePremiumKey, defaultValue: true),
+            action: #selector(self.fakePremiumChanged(_:))
+        )
+
+        y = self.addSection(title: "МЕТКА УДАЛЁННОГО", scrollView: scrollView, y: y, inset: inset, presentationData: presentationData)
+
+        let field = UITextField()
+        field.text = (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "🗑"
+        field.font = UIFont.systemFont(ofSize: 17.0)
+        field.textColor = presentationData.theme.list.itemPrimaryTextColor
+        field.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        field.layer.cornerRadius = 10.0
+        field.leftView = UIView(frame: CGRect(x: 0.0, y: 0.0, width: 12.0, height: 1.0))
+        field.leftViewMode = .always
+        field.returnKeyType = .done
+        field.addTarget(self, action: #selector(self.markChanged(_:)), for: .editingDidEnd)
+        field.addTarget(self, action: #selector(self.markChanged(_:)), for: .editingDidEndOnExit)
+        field.frame = CGRect(x: inset, y: y, width: self.view.bounds.width - inset * 2.0, height: 44.0)
+        field.autoresizingMask = [.flexibleWidth]
+        scrollView.addSubview(field)
+        self.markField = field
+        y += 44.0 + 8.0
+
+        let hint = UILabel()
+        hint.text = "Показывается перед временем у сохранённого удалённого сообщения"
+        hint.font = UIFont.systemFont(ofSize: 13.0)
+        hint.textColor = presentationData.theme.list.itemSecondaryTextColor
+        hint.numberOfLines = 0
+        hint.frame = CGRect(x: inset, y: y, width: self.view.bounds.width - inset * 2.0, height: 34.0)
+        hint.autoresizingMask = [.flexibleWidth]
+        scrollView.addSubview(hint)
+        y += 34.0 + 16.0
+
+        scrollView.contentSize = CGSize(width: self.view.bounds.width, height: y + 40.0)
+    }
+
+    override func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
+        super.containerLayoutUpdated(layout, transition: transition)
+
+        if let scrollView = self.scrollView {
+            scrollView.frame = CGRect(origin: CGPoint(), size: layout.size)
+            scrollView.contentSize = CGSize(width: layout.size.width, height: max(scrollView.contentSize.height, layout.size.height + 1.0))
+        }
+        if let markField = self.markField {
+            markField.frame = CGRect(x: 16.0, y: markField.frame.minY, width: layout.size.width - 32.0, height: 44.0)
+        }
+    }
+
+    private func addSection(title: String, scrollView: UIScrollView, y: CGFloat, inset: CGFloat, presentationData: PresentationData) -> CGFloat {
+        let label = UILabel()
+        label.text = title
+        label.font = UIFont.systemFont(ofSize: 13.0, weight: .regular)
+        label.textColor = presentationData.theme.list.itemSecondaryTextColor
+        label.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 18.0)
+        scrollView.addSubview(label)
+        return y + 18.0 + 6.0
+    }
+
+    private func addRow(title: String, detail: String, scrollView: UIScrollView, y: inout CGFloat, inset: CGFloat, presentationData: PresentationData, isOn: Bool, action: Selector) -> UISwitch {
+        let container = UIView()
+        container.backgroundColor = presentationData.theme.list.itemBlocksBackgroundColor
+        container.layer.cornerRadius = 10.0
+        container.frame = CGRect(x: inset, y: y, width: scrollView.bounds.width - inset * 2.0, height: 62.0)
+        container.autoresizingMask = [.flexibleWidth]
+        scrollView.addSubview(container)
+
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = UIFont.systemFont(ofSize: 17.0)
+        titleLabel.textColor = presentationData.theme.list.itemPrimaryTextColor
+        titleLabel.frame = CGRect(x: 12.0, y: 10.0, width: container.bounds.width - 24.0 - 60.0, height: 22.0)
+        container.addSubview(titleLabel)
+
+        let detailLabel = UILabel()
+        detailLabel.text = detail
+        detailLabel.font = UIFont.systemFont(ofSize: 13.0)
+        detailLabel.textColor = presentationData.theme.list.itemSecondaryTextColor
+        detailLabel.numberOfLines = 0
+        detailLabel.frame = CGRect(x: 12.0, y: 32.0, width: container.bounds.width - 24.0 - 60.0, height: 24.0)
+        container.addSubview(detailLabel)
+
+        let toggle = UISwitch()
+        toggle.isOn = isOn
+        toggle.onTintColor = presentationData.theme.list.itemAccentColor
+        toggle.addTarget(self, action: action, for: .valueChanged)
+        toggle.frame = CGRect(x: container.bounds.width - 12.0 - 51.0, y: 16.0, width: 51.0, height: 31.0)
+        toggle.autoresizingMask = [.flexibleLeftMargin]
+        container.addSubview(toggle)
+
+        y += 62.0 + 8.0
+        return toggle
+    }
+
+    @objc private func keepDeletedChanged(_ sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: ayuKeepDeletedKey)
+    }
+
+    @objc private func fakePremiumChanged(_ sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: ayuFakePremiumKey)
+    }
+
+    @objc private func forwardCopyChanged(_ sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: ayuForwardCopyKey)
+    }
+
+    @objc private func chooseBannerTapped() {
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
+        picker.delegate = self
+        self.present(picker, animated: true, completion: nil)
+    }
+
+    @objc private func clearBannerTapped() {
+        let _ = AyuGramBanner.clear()
+        self.bannerPreview?.image = nil
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        if let image = info[.originalImage] as? UIImage {
+            let _ = AyuGramBanner.save(image: image)
+            self.bannerPreview?.image = AyuGramBanner.load()
+        }
+        picker.dismiss(animated: true, completion: nil)
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true, completion: nil)
+    }
+
+    @objc private func ghostChanged(_ sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: ayuGhostModeKey)
+    }
+
+    @objc private func markChanged(_ sender: UITextField) {
+        let value = sender.text ?? ""
+        UserDefaults.standard.set(value.isEmpty ? "🗑" : value, forKey: ayuDeletedMarkKey)
+    }
 }
