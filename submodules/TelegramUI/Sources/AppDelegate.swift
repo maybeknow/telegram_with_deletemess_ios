@@ -710,8 +710,13 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             // показывает в этом случае "Error 2" и выходит, что на устройстве выглядит чёрным экраном.
             // Для личной сборки живём в собственном контейнере приложения.
             let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            // Application Support в свежем контейнере может ещё не существовать, а Postbox
+            // упирается в "Don't have write access to database folder" и падает с SIGTRAP.
+            try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+            try? FileManager.default.createDirectory(at: base.appendingPathComponent("telegram-data"), withIntermediateDirectories: true)
             appGroupUrl = base
-            AyuOnScreenLog.shared.log("[ayu] app group \(appGroupName) недоступен, данные: \(base.path)")
+            let writable = FileManager.default.isWritableFile(atPath: base.path)
+            AyuOnScreenLog.shared.log("[ayu] app group \(appGroupName) недоступен, данные: \(base.path), writable: \(writable)")
         }
         
         var isDebugConfiguration = false
