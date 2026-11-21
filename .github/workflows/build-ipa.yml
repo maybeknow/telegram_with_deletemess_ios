@@ -11,7 +11,7 @@ name: Build IPA
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main, release ]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -39,11 +39,12 @@ concurrency:
 
 jobs:
   build:
-    name: ipa (${{ github.event.inputs.configuration || 'debug_arm64' }})
+    name: ipa (${{ github.event.inputs.configuration || (github.ref_name == 'release' && 'release_arm64' || 'debug_arm64') }})
     runs-on: ${{ github.event.inputs.runner || 'xcode-27' }}
     # Холодная сборка Telegram-iOS может идти часами; 355 минут — предел задания 6 ч.
     timeout-minutes: 355
     env:
+      BUILD_CONFIGURATION: ${{ github.event.inputs.configuration || (github.ref_name == 'release' && 'release_arm64' || 'debug_arm64') }}
       BAZEL_USER_ROOT: /Users/Shared/bazel
       CACHE_DIR: /Users/Shared/bazel-cache
 
@@ -193,7 +194,7 @@ jobs:
           set -euo pipefail
           BUILD_NUMBER=$(( $(git rev-list --count HEAD) + $(cat build_number_offset) ))
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
-          echo "CONFIGURATION=${{ github.event.inputs.configuration || 'debug_arm64' }}" >> "$GITHUB_ENV"
+          echo "CONFIGURATION=${BUILD_CONFIGURATION}" >> "$GITHUB_ENV"
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot "$BAZEL_USER_ROOT" \
             --cacheDir "$CACHE_DIR" \
@@ -201,7 +202,7 @@ jobs:
             build \
             --configurationPath "/tmp/configuration.json" \
             --codesigningInformationPath build-system/fake-codesigning \
-            --configuration "${{ github.event.inputs.configuration || 'debug_arm64' }}" \
+            --configuration "$BUILD_CONFIGURATION" \
             --buildNumber "$BUILD_NUMBER" \
             --outputBuildArtifactsPath build/artifacts
 
