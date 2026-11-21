@@ -12,6 +12,7 @@ import PeerAvatarGalleryUI
 import TelegramStringFormatting
 import PhoneNumberFormat
 import ActivityIndicator
+import SettingsUI
 import TelegramUniversalVideoContent
 import GalleryUI
 import UniversalMediaPlayer
@@ -89,6 +90,8 @@ let TitleNodeStateRegular = 0
 let TitleNodeStateExpanded = 1
 
 final class PeerInfoHeaderNode: ASDisplayNode {
+    /// AyuGram: кастомный баннер своего профиля (файл Documents/ayu-banner.png, см. AyuGramBanner).
+    private var ayuBannerNode: ASImageNode?
     private var context: AccountContext
     private let isPremiumDisabled: Bool
     private weak var controller: PeerInfoScreenImpl?
@@ -587,6 +590,28 @@ final class PeerInfoHeaderNode: ASDisplayNode {
     
     private var currentPanelStatusData: PeerInfoStatusData?
     func update(width: CGFloat, containerHeight: CGFloat, containerInset: CGFloat, sideInsets: PeerInfoSideInsets, statusBarHeight: CGFloat, navigationHeight: CGFloat, presentedInFormSheet: Bool, isMediaOnly: Bool, contentOffset: CGFloat, paneContainerY: CGFloat, presentationData: PresentationData, peer: EnginePeer?, cachedData: EngineCachedPeerData?, threadData: MessageHistoryThreadData?, peerNotificationSettings: TelegramPeerNotificationSettings?, threadNotificationSettings: TelegramPeerNotificationSettings?, globalNotificationSettings: EngineGlobalNotificationSettings?, statusData: PeerInfoStatusData?, panelStatusData: (PeerInfoStatusData?, PeerInfoStatusData?, CGFloat?), isSecretChat: Bool, isContact: Bool, isSettings: Bool, state: PeerInfoState, profileGiftsContext: ProfileGiftsContext?, screenData: PeerInfoScreenData?, isSearching: Bool, metrics: LayoutMetrics, deviceMetrics: DeviceMetrics, transition: ContainedViewLayoutTransition, additive: Bool, animateHeader: Bool) -> CGFloat {
+        // AyuGram: баннер своего профиля лежит под содержимым шапки, во всю ширину, с обрезкой по 1.6:1.
+        if peer?.id == self.context.account.peerId, !isSettings, AyuGramBanner.hasBanner {
+            let bannerNode: ASImageNode
+            if let current = self.ayuBannerNode {
+                bannerNode = current
+            } else {
+                bannerNode = ASImageNode()
+                bannerNode.contentMode = .scaleAspectFill
+                bannerNode.clipsToBounds = true
+                self.insertSubnode(bannerNode, at: 0)
+                self.ayuBannerNode = bannerNode
+                bannerNode.image = AyuGramBanner.load()
+            }
+            if bannerNode.image == nil {
+                bannerNode.image = AyuGramBanner.load()
+            }
+            let bannerHeight = max(0.0, min(containerHeight, width / 1.6))
+            transition.updateFrame(node: bannerNode, frame: CGRect(x: 0.0, y: -max(0.0, contentOffset), width: width, height: bannerHeight))
+            transition.updateAlpha(node: bannerNode, alpha: 1.0)
+        } else if let bannerNode = self.ayuBannerNode {
+            transition.updateAlpha(node: bannerNode, alpha: 0.0)
+        }
         // iPhone Duo: keep the header out of the side strip; without one every expression below is today's.
         let stripLeft = sideInsets.stripLeft
         let stripRight = sideInsets.stripRight
