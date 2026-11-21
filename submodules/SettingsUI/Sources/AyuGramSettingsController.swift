@@ -32,7 +32,7 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
 
         let listPresentationData = ItemListPresentationData(presentationData)
 
-        var entries: [ItemListEntry] = []
+        var entries: [ItemListItem] = []
 
         entries.append(ItemListSwitchItem(
             presentationData: listPresentationData,
