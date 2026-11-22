@@ -262,7 +262,6 @@ private func ayuGramSettingsControllerEntries(presentationData: PresentationData
 public func ayuGramSettingsController(context: AccountContext) -> ViewController {
     // GhostModeGate используется и в местах без accountPeerId в сигнатуре — запоминаем id,
     // чтобы политика блокировок работала и там.
-    GhostModeGate.fallbackAccountId = context.account.id.toInt64()
     let arguments = AyuGramSettingsControllerArguments(
         updateKeepDeleted: { value in
             UserDefaults.standard.set(value, forKey: ayuKeepDeletedKey)
@@ -284,7 +283,7 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
             UserDefaults.standard.set(value.isEmpty ? "\u{1F5D1}\u{FE0E}" : value, forKey: ayuDeletedMarkKey)
         },
         updateGhost: { transform in
-            GhostModeSettings.shared.update(accountId: context.account.id.toInt64()) { config in
+            GhostModeSettings.shared.update(accountId: context.account.peerId.toInt64()) { config in
                 transform(&config)
             }
         }
@@ -305,7 +304,7 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: ayuGramSettingsControllerEntries(presentationData: presentationData, accountId: context.account.id.toInt64()),
+            entries: ayuGramSettingsControllerEntries(presentationData: presentationData, accountId: context.account.peerId.toInt64()),
             style: .blocks,
             animateChanges: true
         )
