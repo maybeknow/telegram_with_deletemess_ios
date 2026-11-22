@@ -39,6 +39,7 @@ private final class AyuGramSettingsControllerArguments {
     let updateGhostMode: (Bool) -> Void
     var presentBannerPicker: (() -> Void)?
     let updateMark: (String) -> Void
+    var presentMarkEditor: (() -> Void)?
 
     init(
         updateKeepDeleted: @escaping (Bool) -> Void,
@@ -157,7 +158,7 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
                 arguments.presentBannerPicker?()
             })
         case .bannerButton:
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: AyuGramBanner.hasBanner ? "Заменить баннер" : "Выбрать баннер", kind: .generic, alignment: .center, sectionId: self.section, style: .blocks, action: {
+            return ItemListActionItem(presentationData: presentationData, title: AyuGramBanner.hasBanner ? "Заменить баннер" : "Выбрать баннер", kind: .generic, alignment: .center, sectionId: self.section, style: .blocks, action: {
                 arguments.presentBannerPicker?()
             })
         case .bannerFooter:
@@ -165,10 +166,8 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
         case .markHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "МЕТКА УДАЛЁННОГО", sectionId: self.section)
         case let .mark(value):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Текст метки"), text: value, placeholder: "\u{1F5D1}\u{FE0E}", clearType: .always, maxLength: 4, sectionId: self.section, textUpdated: { value in
-                arguments.updateMark(value)
-            }, action: {
-                arguments.updateMark(value)
+            return ItemListDisclosureItem(presentationData: presentationData, title: "Текст метки", label: value, sectionId: self.section, style: .blocks, action: {
+                arguments.presentMarkEditor?()
             })
         case .markFooter:
             return ItemListTextItem(presentationData: presentationData, text: .markdown("Показывается перед временем у сохранённого удалённого сообщения. Пустое поле возвращает корзину."), sectionId: self.section)
@@ -255,6 +254,27 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
     ayuBannerPresenters.append(bannerPresenter)
     arguments.presentBannerPicker = { [weak bannerPresenter] in
         bannerPresenter?.present()
+    }
+
+    arguments.presentMarkEditor = { [weak controller] in
+        guard let controller else {
+            return
+        }
+        let current = (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}"
+        let alert = UIAlertController(title: "Текст метки", message: "Показывается перед временем у удалённого сообщения", preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = current
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "Сохранить", style: .default, handler: { _ in
+            let value = alert.textFields?.first?.text ?? ""
+            UserDefaults.standard.set(value.isEmpty ? "\u{1F5D1}\u{FE0E}" : value, forKey: ayuDeletedMarkKey)
+        }))
+        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive, handler: { _ in
+            UserDefaults.standard.set("\u{1F5D1}\u{FE0E}", forKey: ayuDeletedMarkKey)
+        }))
+        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel, handler: nil))
+        controller.present(alert, animated: true, completion: nil)
     }
 
     // Метка удалённого: обычное текстовое поле в алерте, значение хранится в UserDefaults
