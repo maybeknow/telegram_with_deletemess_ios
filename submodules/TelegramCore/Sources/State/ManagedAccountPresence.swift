@@ -19,6 +19,7 @@ private final class AccountPresenceManagerImpl {
     private var wasOnline: Bool = false
     private var lastAppliedGhostMode: Bool = false
     private var ghostModeTimer: SignalKitTimer?
+    private var ghostResendTimer: SignalKitTimer?
     
     init(queue: Queue, shouldKeepOnlinePresence: Signal<Bool, NoError>, network: Network) {
         self.queue = queue
@@ -64,6 +65,22 @@ private final class AccountPresenceManagerImpl {
         if UserDefaults.standard.bool(forKey: "ayugram.ghostMode") {
             self.onlineTimer?.invalidate()
             self.onlineTimer = nil
+            // Держим offline: любой другой запрос может снова сделать нас онлайн, поэтому
+            // переотправляем статус, пока режим включён.
+            if self.ghostResendTimer == nil {
+                let timer = SignalKitTimer(timeout: 20.0, repeat: true, completion: { [weak self] in
+                    guard let strongSelf = self else { return }
+                    if UserDefaults.standard.bool(forKey: "ayugram.ghostMode") {
+                        strongSelf.updatePresence(strongSelf.wasOnline)
+                    } else {
+                        strongSelf.ghostResendTimer?.invalidate()
+                        strongSelf.ghostResendTimer = nil
+                        strongSelf.updatePresence(strongSelf.wasOnline)
+                    }
+                }, queue: self.queue)
+                timer.start()
+                self.ghostResendTimer = timer
+            }
             self.isPerformingUpdate.set(true)
             self.currentRequestDisposable.set((self.network.request(Api.functions.account.updateStatus(offline: .boolTrue))
             |> `catch` { _ -> Signal<Api.Bool, NoError> in

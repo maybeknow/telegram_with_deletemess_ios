@@ -58,6 +58,21 @@ extension PeerVerification {
 
 private let botFlagsKeptOnMinUpdate: BotUserInfoFlags = [.canEdit, .isBusiness, .hasWebApp, .hasForum, .forumManagedByUser, .canManageBots, .isGuestChat, .isGuardBot, .displayForumAsSidebar]
 
+
+/// AyuGram: локальный Premium. Флаг премиума приходит с сервера битом 28; для своего
+/// аккаунта он подменяется, если в настройках включён локальный Premium
+/// (`ayugram.fakePremium`, свой id — `ayugram.selfPeerId`).
+private func ayuLocalPremium(flags: Int32, id: Int64) -> Bool {
+    if (flags & (1 << 28)) != 0 {
+        return true
+    }
+    guard UserDefaults.standard.bool(forKey: "ayugram.fakePremium") else {
+        return false
+    }
+    let storedSelf = UserDefaults.standard.object(forKey: "ayugram.selfPeerId") as? NSNumber
+    return storedSelf?.int64Value == id
+}
+
 extension TelegramUser {
     convenience init(user: Api.User) {
         switch user {
@@ -91,7 +106,7 @@ extension TelegramUser {
             if (flags & (1 << 26)) != 0 {
                 userFlags.insert(.isFake)
             }
-            if (flags & (1 << 28)) != 0 {
+            if ayuLocalPremium(flags: flags, id: id.id._internalGetInt64Value()) {
                 userFlags.insert(.isPremium)
             }
             if (flags2 & (1 << 2)) != 0 {
@@ -238,7 +253,7 @@ extension TelegramUser {
                         if (flags & Int32(1 << 26)) != 0 {
                             userFlags.insert(.isFake)
                         }
-                        if (flags & (1 << 28)) != 0 {
+                        if ayuLocalPremium(flags: flags, id: id.id._internalGetInt64Value()) {
                             userFlags.insert(.isPremium)
                         }
                         

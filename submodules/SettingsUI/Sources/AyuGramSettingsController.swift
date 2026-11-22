@@ -215,6 +215,10 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
         },
         updateFakePremium: { value in
             UserDefaults.standard.set(value, forKey: ayuFakePremiumKey)
+            // Свой id нужен ядру, чтобы подменить флаг премиума только у этого аккаунта.
+            if value {
+                UserDefaults.standard.set(context.account.peerId.toInt64(), forKey: "ayugram.selfPeerId")
+            }
         },
         updateGhostMode: { value in
             UserDefaults.standard.set(value, forKey: ayuGhostModeKey)
