@@ -383,6 +383,22 @@ public final class GhostModeOfflineKeeper {
 `.resource.size` (`SyncCore_TelegramMediaFile.swift:703`, `MediaResource.swift:14`);
 если размер неизвестен (pending, стриминг) — 12 с.
 
+### 3.6 Подключение keeper в приложении [ДОБАВЛЕНО 9]
+
+- `SharedAccountContext.swift:786` (реальный аккаунт, `updateAccounts`): сразу после создания
+  `AccountContextImpl` вызываются `GhostModeOfflineKeeper.shared.configure(accountId:network:)`
+  и `start()`. `start()` вызывается **всегда**: `sendOffline` сам проверяет
+  `isBlocked(.updateStatus)` и молча выходит, а холостой таймер раз в 60 с почти бесплатен.
+  Второй выход `makeTempAccountContext` (`:2028`, `temp: true`) намеренно **не** подключён.
+- `AppDelegate.handleDidEnterBackground()` — `notifyActivity("app-background")`.
+- `ChatController` после `enqueueMessages` (когда пришли `messageIds`) — `notifyActivity("message-sent")`.
+- `ChatController.viewDidAppear` — `notifyActivity("chat-opened")` с флагом по `chatLocation`
+  (`ChatLocation: Equatable`, AccountContext.swift:519), иначе возврат из фона или смена таба
+  спамили бы keeper.
+- **`stop()` при logout не подключён:** в `SharedAccountContext.swift` функции logout нет.
+  При смене аккаунта `configure` перезаписывает `accountId`; до перезаписи keeper шлёт offline
+  старому аккаунту — это то же, что он делал раньше, вреда нет, после перезаписи работает с новым.
+
 ## 4. Точки интеграции **[ОБНОВЛЕНО 2]**
 
 | Файл | Есть? | Что делаем |
