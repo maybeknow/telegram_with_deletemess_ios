@@ -48,13 +48,15 @@ public final class TelegramGhostModeNetwork: GhostModeNetwork {
 public final class GhostModeOfflineKeeper {
     public static let shared = GhostModeOfflineKeeper()
 
-    private let queue = Queue()
+    /// `Queue.sync` в этом проекте не возвращает значение, поэтому состояние защищено обычным
+    /// локом, а сетевые вызовы и таймер остаются как были.
+    private let lock = NSLock()
     private var accountIdValue: Int64?
     private var networkValue: GhostModeNetwork?
-    private var settings: GhostModeSettings
-    private var logger: GhostModeLogger
-    private var timer: SwiftSignalKit.Timer?
     private var isActiveValue = false
+    private let settings: GhostModeSettings
+    private let logger: GhostModeLogger
+    private var timer: SwiftSignalKit.Timer?
 
     /// Страховочный интервал: 60 с. События покрывают активные действия; таймер нужен только
     /// чтобы перекрыть редкие фоновые RPC. 20 с давали заметное «мигание» статуса и лишний
@@ -68,22 +70,37 @@ public final class GhostModeOfflineKeeper {
 
     /// Привязка к аккаунту. Вызывается, когда AccountContext становится доступен.
     public func configure(accountId: Int64, network: GhostModeNetwork) {
-        self.queue.sync {
-            self.accountIdValue = accountId
-            self.networkValue = network
-        }
+        self.lock.lock()
+        self.accountIdValue = accountId
+        self.networkValue = network
+        self.lock.unlock()
     }
 
     public var accountId: Int64? {
-        return self.queue.sync { self.accountIdValue }
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.accountIdValue
     }
 
     private var isActive: Bool {
-        return self.queue.sync { self.isActiveValue }
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.isActiveValue
     }
 
     private func setActive(_ value: Bool) {
-        self.queue.sync { self.isActiveValue = value }
+        self.lock.lock()
+        self.isActiveValue = value
+        self.lock.unlock()
+    }
+
+    private func currentState() -> (accountId: Int64, network: GhostModeNetwork)? {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        guard let accountId = self.accountIdValue, let network = self.networkValue else {
+            return nil
+        }
+        return (accountId, network)
     }
 
     public func start() {
@@ -91,7 +108,7 @@ public final class GhostModeOfflineKeeper {
         self.setActive(true)
         let timer = SwiftSignalKit.Timer(timeout: Self.fallbackInterval, repeat: true, completion: { [weak self] in
             self?.sendOffline(reason: "fallback-timer")
-        }, queue: self.queue)
+        }, queue: .mainQueue())
         timer.start()
         self.timer = timer
         // Приложение только что поднялось: любой стартовый запрос уже мог выставить «в сети».
@@ -113,13 +130,7 @@ public final class GhostModeOfflineKeeper {
         guard self.isActive else {
             return
         }
-        let state: (Int64, GhostModeNetwork)? = self.queue.sync {
-            guard let accountId = self.accountIdValue, let network = self.networkValue else {
-                return nil
-            }
-            return (accountId, network)
-        }
-        guard let (accountId, network) = state else {
+        guard let (accountId, network) = self.currentState() else {
             return
         }
         guard GhostModeGate(accountId: accountId, settings: self.settings).isBlocked(.updateStatus) else {
