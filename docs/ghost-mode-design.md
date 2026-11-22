@@ -231,7 +231,7 @@ public enum GhostModeOutbox {
     /// Отмена «передумал»: сообщение ещё не отправлено, лежит запланированным.
     /// Удаление идёт локально через движок, отдельного RPC не нужно.
     public static func cancelScheduled(engine: TelegramEngine.Messages, messageIds: [MessageId]) {
-        let _ = engine.deleteMessagesInteractively(messageIds: messageIds, type: .scheduledMessages)
+        let _ = engine.deleteMessagesInteractively(messageIds: messageIds, type: .forLocalPeer)
             .startStandalone()
     }
 }
