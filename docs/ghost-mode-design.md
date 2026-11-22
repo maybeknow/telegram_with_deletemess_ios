@@ -237,6 +237,21 @@ public enum GhostModeOutbox {
 }
 ```
 
+**`applyDelay(attributes:delay:now:)` [ДОБАВЛЕНО 7.1].** Появился в реализации шага 3 и
+используется в тесте 6.6. Снимает прежний `OutgoingScheduleInfoMessageAttribute` и добавляет
+новый, поэтому повторное применение не копит атрибуты расписания (иначе у сообщения оказалось
+бы сразу несколько сроков отправки):
+
+```swift
+public static func applyDelay(attributes: [MessageAttribute], delay: Int32, now: Date = Date()) -> [MessageAttribute] {
+    var attributes = attributes
+    attributes.removeAll(where: { $0 is OutgoingScheduleInfoMessageAttribute })
+    attributes.append(self.scheduleAttribute(delay: delay, now: now))
+    return attributes
+}
+```
+
+
 ### 3.4 GhostModeOfflineKeeper [ОБНОВЛЕНО 3] [ОБНОВЛЕНО 4]
 
 Задача: перекрывать «онлайн», который выставляется любым другим запросом. Работает **по
@@ -775,6 +790,54 @@ func testUpdateDoesNotFireOnChangeWhenValueUnchanged() {
 }
 ```
 
+### 6.6 Совместимость с Premium [ДОБАВЛЕНО 7]
+
+```swift
+func testGhostModeDoesNotAffectPremiumFlag() {
+    // Свой UserDefaults, чтобы не трогать реальные настройки приложения.
+    // Имя suite нужно сохранить: removePersistentDomain принимает имя, а не description.
+    let suiteName = "ayugram.ghost.tests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    defaults.set(true, forKey: "ayugram.fakePremium")
+    defaults.set(NSNumber(value: 12345), forKey: "ayugram.selfPeerId")
+
+    let settings = GhostModeSettings(storage: InMemoryGhostStorage())
+    settings.update(accountId: 1) { $0.blocksTyping = false }
+    settings.update(accountId: 1) { $0.blocksReadHistory = false }
+
+    // Ghost пишет только в свой префикс и не касается premium-ключей.
+    XCTAssertEqual(defaults.bool(forKey: "ayugram.fakePremium"), true)
+    XCTAssertEqual(defaults.object(forKey: "ayugram.selfPeerId") as? NSNumber, NSNumber(value: 12345))
+}
+
+func testScheduledMessagesLimitNotExceededLocally() {
+    // Клиент лимит не хранит: серверный лимит проверить нельзя. Проверяем то, что в нашей
+    // власти — что applyDelay всегда ставит ровно один атрибут расписания, а не копит их.
+    let attributes: [MessageAttribute] = []
+    let once = GhostModeOutbox.applyDelay(attributes: attributes, delay: 12)
+    let twice = GhostModeOutbox.applyDelay(attributes: once, delay: 12)
+
+    let scheduledOnce = once.filter { $0 is OutgoingScheduleInfoMessageAttribute }
+    let scheduledTwice = twice.filter { $0 is OutgoingScheduleInfoMessageAttribute }
+    XCTAssertEqual(scheduledOnce.count, 1)
+    XCTAssertEqual(scheduledTwice.count, 1, "повторное применение заменяет атрибут, а не добавляет второй")
+}
+
+func testReadStoriesBlockedWhenGhostEnabled() {
+    // Название честное: в клиенте анонимность отдельным флагом не выражена (grep по
+    // Story-файлам пуст), поэтому тест проверяет только блокировку stories.readStories:
+    // при включённой настройке запрос не уходит вообще, при выключенной — уходит.
+    let settings = GhostModeSettings(storage: InMemoryGhostStorage())
+    let gate = GhostModeGate(accountId: 1, settings: settings)
+    XCTAssertTrue(gate.isBlocked(.readStories))
+
+    settings.update(accountId: 1) { $0.blocksReadStories = false }
+    XCTAssertFalse(GhostModeGate(accountId: 1, settings: settings).isBlocked(.readStories))
+}
+```
+
 ## 7. Ограничения и риски **[ОБНОВЛЕНО 2]**
 
 - **Server-side ограничения.** Отложенные сообщения штатны, но сервер знает, когда клиент
@@ -791,6 +854,24 @@ func testUpdateDoesNotFireOnChangeWhenValueUnchanged() {
   локальную часть, лента будет показывать уже просмотренные истории как новые.
 - **Отложенная отправка меняет UX:** сообщение видно как запланированное, при закрытии
   приложения до срока отправка может не произойти; отмена (3.3) обязательна.
+- **Premium и лимит отложенных [ОБНОВЛЕНО 7].** При включённом `delayedSend` каждое
+  сообщение ставится в отложенные. Лимит отложенных на аккаунт — серверный (Premium его
+  поднимает); в клиенте константы нет, поэтому упереться в лимит можно молча: отправка начнёт
+  отклоняться сервером. Пока это не обрабатывается отдельно — при большом потоке сообщений с
+  включённым ghost возможны отказы.
+  **Следующий шаг 7.1 [ДОБАВЛЕНО 7.1]:** при отклонении сервером (лимит отложенных)
+  `enqueueMessages` возвращает `Signal<[MessageId?], NoError>`, и ошибка сейчас **не
+  обрабатывается отдельно** — тост об отмене показывается, но сообщение просто не уходит.
+  Планируется: подписка на ошибку отправки и тост «Не удалось отправить: достигнут лимит
+  отложенных сообщений» с предложением выключить задержку. Пока не реализовано.
+- **Premium-транскрипция и `setTyping` [ОБНОВЛЕНО 7].** Транскрипция идёт отдельным RPC и
+  работает; «печатает… с кастомным статусом» в iOS-клиенте не найдено (в проекте один путь —
+  `messages.setTyping`, `ManagedLocalInputActivities.swift:185`), поэтому блокировка `setTyping`
+  ломает только индикатор набора, других Premium-проявлений у него нет.
+- **Ghost и «отметить прочитанным без отправки» [ОБНОВЛЕНО 7].** Отдельной Premium-функции
+  «прочитать, не отправляя» в проекте нет: чтение всегда идёт через
+  `SynchronizePeerReadState` / `ManagedSynchronizeViewStoriesOperations`, то есть конфликта
+  между двумя механизмами не возникает — есть один, и его ghost блокирует целиком.
 - **Тесты.** Изменения в state sync требуют прогона `Tests/StateSync`.
 
 ---
@@ -880,6 +961,36 @@ let state = configPromise.get()
 `accountId` берётся заново — подписок не требуется.
 
 ---
+
+## 10. Ghost Mode и Premium — совместимость [ДОБАВЛЕНО 7]
+
+Проверено по коду, а не по документации AyuGram. Главный вывод: **прямого конфликта нет** —
+ни один Premium-RPC не проходит через наши гейты, потому что гейты блокируют только четыре
+запроса (`readHistory`, `readStories`, `setTyping`, `updateStatus`).
+
+| Premium-функция | Как ведёт себя Ghost Mode | Что делать |
+|---|---|---|
+| **Транскрипция голосовых/видео** | Отдельный RPC: `messages.transcribeAudio` — `Transcription.swift:26` (`_internal_transcribeAudio`). Нашими гейтами **не блокируется**, расшифровка работает. | Ничего. Учесть, что сам запрос делает аккаунт «в сети» на стороне сервера, поэтому keeper пришлёт `offline` следующим событием или по таймеру 60 с. |
+| **Анонимный просмотр историй** | Отдельного клиентского флага анонимности в проекте **не найдено** (grep `anonymous` по Story-файлам пуст). Наш блок `stories.readStories` (`ManagedSynchronizeViewStoriesOperations.swift:127`) не сообщает серверу о просмотре **вообще** — это строже, чем анонимный просмотр. | Ничего не менять: блокировка уже покрывает анонимность. Помнить побочный эффект: у автора не растёт счётчик, локально история помечается просмотренной (риск в разделе 7). |
+| **Premium-реакции** | Отправка реакции — активное действие, отдельный RPC, гейты его не трогают. | Ничего. Но реакция делает аккаунт онлайн → keeper перекрывает `offline`; собеседник увидит реакцию, но не увидит длительного «в сети». |
+| **Отложенные сообщения** | Ghost использует **тот же** механизм (`OutgoingScheduleInfoMessageAttribute`). Лимит отложенных — серверный (Premium его поднимает), клиент его не хранит: в проекте константы лимита нет. | При `delayedSend` каждое сообщение становится отложенным, поэтому при достижении серверного лимита отправка начнёт отклоняться. См. риск в разделе 7. |
+| **Папки, темы, стикеры** | Не связаны с ghost-гейтами. Ключи настроек разные: ghost — `ayugram.ghost.<peerId>`, локальный Premium — `ayugram.fakePremium` / `ayugram.selfPeerId`. | Ничего: пересечения ключей нет, `GhostModeSettings` пишет только в свой префикс. |
+
+### 10.1 Локальный Premium и Ghost Mode [ДОБАВЛЕНО 7]
+
+Подмена флага сделана в `TelegramCore/Sources/ApiUtils/TelegramUser.swift`: хелпер
+`ayuLocalPremium(flags:id:)` возвращает `true`, если выставлен бит 28 **или** включён
+`ayugram.fakePremium` **и** id пользователя совпадает с сохранённым своим. Вызов стоит в двух
+местах разбора пользователя (около строк 109 и 256 — бывшие проверки `if (flags & (1 << 28)) != 0`).
+
+Что это значит для Ghost Mode:
+
+- локальный Premium — **чисто клиентская подмена**: сервер по-прежнему считает аккаунт
+  обычным, поэтому «валидации Premium через онлайн» не существует, и ghost её сломать не может;
+- обратное тоже верно: ghost не влияет на подмену — она читается из `UserDefaults` при разборе
+  пользователя, а не из сети;
+- серверные Premium-операции (подарки, покупки, реальные лимиты) при локальной подмене
+  недоступны и остаются недоступными независимо от ghost.
 
 ## 9. Порядок внедрения
 
