@@ -9375,7 +9375,17 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 isScheduledMessages = true
             }
             
-            if commit || !isScheduledMessages {
+            // AyuGram Ghost Mode: при включённой задержке сообщение уходит отложенным,
+            // а не сразу — это скрывает мгновенную активность от собеседника.
+            if GhostModeSettings.shared.config(accountId: self.context.account.id.toInt64()).delayedSend {
+                let delay = GhostModeOutbox.delay(forMediaSize: nil)
+                messages = messages.map { message -> EnqueueMessage in
+                    return message.withUpdatedAttributes { attributes in
+                        return GhostModeOutbox.applyDelay(attributes: attributes, delay: delay)
+                    }
+                }
+            }
+                        if commit || !isScheduledMessages {
                 self.commitPurposefulAction()
                 
                 let _ = (enqueueMessages(account: self.context.account, peerId: peerId, messages: self.transformEnqueueMessages(messages, postpone: postpone))
