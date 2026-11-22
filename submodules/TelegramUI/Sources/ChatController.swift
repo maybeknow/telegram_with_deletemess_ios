@@ -9388,8 +9388,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             if GhostModeSettings.shared.config(accountId: self.context.account.peerId.toInt64()).delayedSend {
                 // Задержка считается по каждому сообщению отдельно: в пачке может быть
                 // текст (12 с) и медиа (max(6, ceil(МБ × 4.5)) с).
-                let delay = GhostModeOutbox.delay(forMediaSize: GhostModeOutbox.mediaSize(for: message))
                 messages = messages.map { message -> EnqueueMessage in
+                    let delay = GhostModeOutbox.delay(forMediaSize: GhostModeOutbox.mediaSize(for: message))
                     return message.withUpdatedAttributes { attributes in
                         return GhostModeOutbox.applyDelay(attributes: attributes, delay: delay)
                     }
