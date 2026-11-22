@@ -108,11 +108,11 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
         case .privacyFooter: return 9
         case .bannerHeader: return 10
         case .banner: return 11
-        case .bannerFooter: return 12
-        case .bannerButton: return 16
-        case .markHeader: return 13
-        case .mark: return 14
-        case .markFooter: return 15
+        case .bannerFooter: return 13
+        case .bannerButton: return 12
+        case .markHeader: return 14
+        case .mark: return 15
+        case .markFooter: return 16
         }
     }
 
