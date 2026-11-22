@@ -30,6 +30,7 @@ private enum AyuGramSection: Int32 {
     case privacy
     case banner
     case mark
+    case ghost
 }
 
 private final class AyuGramSettingsControllerArguments {
@@ -40,19 +41,22 @@ private final class AyuGramSettingsControllerArguments {
     var presentBannerPicker: (() -> Void)?
     let updateMark: (String) -> Void
     var presentMarkEditor: (() -> Void)?
+    let updateGhost: ((inout GhostModeConfig) -> Void) -> Void
 
     init(
         updateKeepDeleted: @escaping (Bool) -> Void,
         updateForwardCopy: @escaping (Bool) -> Void,
         updateFakePremium: @escaping (Bool) -> Void,
         updateGhostMode: @escaping (Bool) -> Void,
-        updateMark: @escaping (String) -> Void
+        updateMark: @escaping (String) -> Void,
+        updateGhost: @escaping ((inout GhostModeConfig) -> Void) -> Void
     ) {
         self.updateKeepDeleted = updateKeepDeleted
         self.updateForwardCopy = updateForwardCopy
         self.updateFakePremium = updateFakePremium
         self.updateGhostMode = updateGhostMode
         self.updateMark = updateMark
+        self.updateGhost = updateGhost
     }
 }
 
@@ -79,6 +83,14 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
     case mark(String)
     case markFooter
 
+    case ghostHeader
+    case readHistory(Bool)
+    case typing(Bool)
+    case readStories(Bool)
+    case alwaysOffline(Bool)
+    case delayedSend(Bool)
+    case ghostFooter
+
     var section: ItemListSectionId {
         switch self {
         case .messagesHeader, .keepDeleted, .forwardCopy, .messagesFooter:
@@ -91,6 +103,8 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             return AyuGramSection.banner.rawValue
         case .markHeader, .mark, .markFooter:
             return AyuGramSection.mark.rawValue
+        case .ghostHeader, .readHistory, .typing, .readStories, .alwaysOffline, .delayedSend, .ghostFooter:
+            return AyuGramSection.ghost.rawValue
         }
     }
 
@@ -113,6 +127,13 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
         case .markHeader: return 14
         case .mark: return 15
         case .markFooter: return 16
+        case .ghostHeader: return 17
+        case .readHistory: return 18
+        case .typing: return 19
+        case .readStories: return 20
+        case .alwaysOffline: return 21
+        case .delayedSend: return 22
+        case .ghostFooter: return 23
         }
     }
 
@@ -171,11 +192,35 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             })
         case .markFooter:
             return ItemListTextItem(presentationData: presentationData, text: .markdown("Показывается перед временем у сохранённого удалённого сообщения. Пустое поле возвращает корзину."), sectionId: self.section)
+        case .ghostHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "GHOST MODE", sectionId: self.section)
+        case let .readHistory(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Не отмечать прочитанным", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateGhost { $0.blocksReadHistory = value }
+            })
+        case let .typing(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Не показывать «печатает…»", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateGhost { $0.blocksTyping = value }
+            })
+        case let .readStories(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Не отмечать истории просмотренными", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateGhost { $0.blocksReadStories = value }
+            })
+        case let .alwaysOffline(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Всегда офлайн", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateGhost { $0.blocksUpdateStatus = value }
+            })
+        case let .delayedSend(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Отправлять с задержкой", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateGhost { $0.delayedSend = value }
+            })
+        case .ghostFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .markdown("Пока включён Ghost Mode, клиент не отправляет серверу прочтение, набор текста, просмотр историй и не выставляет себя в сети. Параллельный официальный клиент этот режим не соблюдает."), sectionId: self.section)
         }
     }
 }
 
-private func ayuGramSettingsControllerEntries(presentationData: PresentationData) -> [AyuGramSettingsControllerEntry] {
+private func ayuGramSettingsControllerEntries(presentationData: PresentationData, accountId: Int64) -> [AyuGramSettingsControllerEntry] {
     var entries: [AyuGramSettingsControllerEntry] = []
 
     entries.append(.messagesHeader)
@@ -199,6 +244,15 @@ private func ayuGramSettingsControllerEntries(presentationData: PresentationData
     entries.append(.markHeader)
     entries.append(.mark((UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}"))
     entries.append(.markFooter)
+
+    let ghost = GhostModeSettings.shared.config(accountId: accountId)
+    entries.append(.ghostHeader)
+    entries.append(.readHistory(ghost.blocksReadHistory))
+    entries.append(.typing(ghost.blocksTyping))
+    entries.append(.readStories(ghost.blocksReadStories))
+    entries.append(.alwaysOffline(ghost.blocksUpdateStatus))
+    entries.append(.delayedSend(ghost.delayedSend))
+    entries.append(.ghostFooter)
 
     return entries
 }
@@ -225,6 +279,11 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
         },
         updateMark: { value in
             UserDefaults.standard.set(value.isEmpty ? "\u{1F5D1}\u{FE0E}" : value, forKey: ayuDeletedMarkKey)
+        },
+        updateGhost: { transform in
+            GhostModeSettings.shared.update(accountId: context.account.id.toInt64()) { config in
+                transform(&config)
+            }
         }
     )
 
@@ -243,7 +302,7 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
         )
         let listState = ItemListNodeState(
             presentationData: ItemListPresentationData(presentationData),
-            entries: ayuGramSettingsControllerEntries(presentationData: presentationData),
+            entries: ayuGramSettingsControllerEntries(presentationData: presentationData, accountId: context.account.id.toInt64()),
             style: .blocks,
             animateChanges: true
         )
