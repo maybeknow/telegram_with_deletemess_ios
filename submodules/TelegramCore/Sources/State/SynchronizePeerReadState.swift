@@ -291,7 +291,7 @@ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager:
                 switch readState {
                 case let .idBased(maxIncomingReadId, _, _, _, markedUnread):
                     // AyuGram Ghost Mode: прочтение серверу не сообщаем, локальное состояние возвращаем как есть.
-                    if GhostModeGate.isBlocked(.readHistory) {
+                    if GhostModeGate(accountId: stateManager.accountPeerId.toInt64()).isBlocked(.readHistory) {
                         return Signal<PeerReadState, PeerReadStateValidationError>.single(readState)
                     }
                     var pushSignal: Signal<Void, NoError> = network.request(Api.functions.channels.readHistory(channel: Api.InputChannel.inputChannel(.init(channelId: channelId, accessHash: accessHash)), maxId: maxIncomingReadId))
@@ -325,7 +325,7 @@ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager:
                 switch readState {
                 case let .idBased(maxIncomingReadId, _, _, _, markedUnread):
                     // AyuGram Ghost Mode: прочтение серверу не сообщаем, локальное состояние возвращаем как есть.
-                    if GhostModeGate.isBlocked(.readHistory) {
+                    if GhostModeGate(accountId: stateManager.accountPeerId.toInt64()).isBlocked(.readHistory) {
                         return Signal<PeerReadState, PeerReadStateValidationError>.single(readState)
                     }
                     var pushSignal: Signal<Void, NoError> = network.request(Api.functions.messages.readHistory(peer: inputPeer, maxId: maxIncomingReadId))

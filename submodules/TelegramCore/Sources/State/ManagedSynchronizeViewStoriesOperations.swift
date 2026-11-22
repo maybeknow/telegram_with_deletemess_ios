@@ -124,7 +124,7 @@ private func pushStoriesAreSeen(postbox: Postbox, network: Network, stateManager
     }
     // AyuGram Ghost Mode: просмотр истории серверу не сообщаем. Локальное состояние
     // (applyUpdateReadStories) не трогаем — иначе поедет лента на этом устройстве.
-    if GhostModeGate.isBlocked(.readStories) {
+    if GhostModeGate(accountId: stateManager.accountPeerId.toInt64()).isBlocked(.readStories) {
         return .complete()
     }
     return network.request(Api.functions.stories.readStories(peer: inputPeer, maxId: operation.storyId))

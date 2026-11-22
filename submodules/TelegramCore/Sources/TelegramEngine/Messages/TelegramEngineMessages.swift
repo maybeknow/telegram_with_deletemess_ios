@@ -163,7 +163,7 @@ public extension TelegramEngine {
         }
 
         public func stopIncomingTypingDraft(peerId: EnginePeer.Id, threadId: Int64?) -> Signal<Never, NoError> {
-            return _internal_stopIncomingTypingDraft(postbox: self.account.postbox, network: self.account.network, peerId: peerId, threadId: threadId)
+            return _internal_stopIncomingTypingDraft(postbox: self.account.postbox, network: self.account.network, accountPeerId: self.account.peerId, peerId: peerId, threadId: threadId)
         }
 
         public func applyMaxReadIndexInteractively(index: MessageIndex) -> Signal<Void, NoError> {

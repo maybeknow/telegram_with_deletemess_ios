@@ -34,23 +34,3 @@ public struct GhostModeGate {
         }
     }
 }
-
-extension GhostModeGate {
-    /// Для точек, где id аккаунта не проброшен параметром (см. отчёт по шагу 2: в
-    /// `TypingDraftStop` и `pushStoriesAreSeen` его нет в сигнатуре). Берём последний известный
-    /// id: его проставляет экран настроек и любая запись конфига. Для одного аккаунта на
-    /// устройстве это эквивалентно явной передаче.
-    public static var fallbackAccountId: Int64 {
-        get {
-            return Int64(UserDefaults.standard.object(forKey: "ayugram.currentAccountId") as? NSNumber ?? 0)
-        }
-        set {
-            UserDefaults.standard.set(NSNumber(value: newValue), forKey: "ayugram.currentAccountId")
-        }
-    }
-
-    /// Проверка без явного id: используется там, где аккаунт неизвестен в сигнатуре.
-    public static func isBlocked(_ rpc: GhostModeRPC, settings: GhostModeSettings = .shared) -> Bool {
-        return GhostModeGate(accountId: GhostModeGate.fallbackAccountId, settings: settings).isBlocked(rpc)
-    }
-}

@@ -426,9 +426,16 @@ if isOnline, GhostModeGate(accountId: self.accountId).isBlocked(.updateStatus) {
 }
 ```
 
-То есть presence **не отправляет online**, но и не берёт на себя роль keeper'а: ни таймеров,
-ни переотправок. Весь «перекрывающий» офлайн — забота `GhostModeOfflineKeeper`. Так нет двух
-таймеров, спорящих за один статус. [ОБНОВЛЕНО 3]
+То есть presence **не отправляет online**, но и не берёт на себя роль keeper'а: у него нет
+своего таймера переотправки offline. Важное уточнение про таймеры [ОБНОВЛЕНО 7]:
+
+- `onlineTimer` внутри `AccountPresenceManagerImpl` — **собственный** таймер presence: он раз в
+  30 секунд «переармливает» online. Когда online запрещён, его надо снимать (`invalidate`), иначе
+  presence через 30 с сам себя переиграет и всё-таки отправит online;
+- таймер keeper'а (fallback 60 с) — отдельный и принадлежит только `GhostModeOfflineKeeper`.
+
+Поэтому `invalidate(onlineTimer)` в `ManagedAccountPresence` — это снятие собственного таймера
+presence, а не нарушение разделения: каждый владеет только своим таймером.
 
 ---
 

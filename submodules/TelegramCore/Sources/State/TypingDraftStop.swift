@@ -58,7 +58,7 @@ func stoppedTypingDraft(_ value: (id: Int64, namespace: MessageId.Namespace, thr
     return (value.id, value.namespace, value.threadId, value.authorId, value.timestamp, value.text, attributes, true)
 }
 
-func _internal_stopIncomingTypingDraft(postbox: Postbox, network: Network, peerId: PeerId, threadId: Int64?) -> Signal<Never, NoError> {
+func _internal_stopIncomingTypingDraft(postbox: Postbox, network: Network, accountPeerId: PeerId, peerId: PeerId, threadId: Int64?) -> Signal<Never, NoError> {
     return postbox.transaction { transaction -> (Api.InputPeer, Int64)? in
         let peerAndThreadId = PeerAndThreadId(peerId: peerId, threadId: threadId)
         guard let current = transaction.getCurrentTypingDraft(location: peerAndThreadId) else {
@@ -95,8 +95,8 @@ func _internal_stopIncomingTypingDraft(postbox: Postbox, network: Network, peerI
         if topMessageId != nil {
             flags |= 1 << 0
         }
-        // AyuGram Ghost Mode: остановку набора тоже не сообщаем (accountPeerId в сигнатуре нет).
-        if GhostModeGate.isBlocked(.setTyping) {
+        // AyuGram Ghost Mode: остановку набора тоже не сообщаем.
+        if GhostModeGate(accountId: accountPeerId.toInt64()).isBlocked(.setTyping) {
             return .complete()
         }
         return network.request(Api.functions.messages.setTyping(flags: flags, peer: inputPeer, topMsgId: topMessageId, action: .sendMessageStopDraftAction(.init(randomId: randomId))))
