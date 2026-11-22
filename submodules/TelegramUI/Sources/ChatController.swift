@@ -260,6 +260,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     public internal(set) var chatLocation: ChatLocation
     // AyuGram Ghost Mode: последний chatLocation, для которого keeper уже уведомили.
     private var lastGhostActivityChatLocation: ChatLocation?
+    
+    // AyuGram Ghost Mode: id сообщений, поставленных в отложенные нами, и подписки на их
+    // состояние. Подписка одноэлементная (мульти-вариант engine.data.subscribe в проекте
+    // закомментирован), поэтому на пачку из N сообщений создаётся N подписок (обычно 1-3).
+    private var ghostScheduledMessageIds: Set<MessageId> = []
+    private var ghostFailureDisposables: [MessageId: Disposable] = [:]
     public internal(set) var subject: ChatControllerSubject?
     var initialTextInputState: ChatTextInputState?
     
@@ -7197,6 +7203,49 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         })
     }
 
+    /// Подписка на состояние отложенных сообщений: если отправка провалилась, показываем тост
+    /// с возможностью выключить задержку. Причина ошибки сервером не передаётся, поэтому текст
+    /// общий, без упоминания лимита.
+    private func registerGhostScheduledMessages(_ ids: [MessageId]) {
+        self.ghostScheduledMessageIds.formUnion(ids)
+        for id in ids {
+            self.ghostFailureDisposables.removeValue(forKey: id)?.dispose()
+            let disposable = (self.context.engine.data.subscribe(TelegramEngine.EngineData.Item.Messages.Message(id: id))
+            |> deliverOnMainQueue).startStandalone(next: { [weak self] message in
+                guard let self, let message else {
+                    return
+                }
+                let flags = message._asMessage().flags
+                if flags.contains(.Failed) {
+                    // Проверяем ДО удаления: иначе единственное сообщение в Set сделает его пустым
+                    // и тост не покажется.
+                    let hadScheduled = !self.ghostScheduledMessageIds.isEmpty
+                    self.ghostScheduledMessageIds.remove(id)
+                    self.ghostFailureDisposables.removeValue(forKey: id)?.dispose()
+                    if hadScheduled {
+                        self.showGhostDelayedSendFailureToast()
+                    }
+                } else if !flags.contains(.Sending) && !flags.contains(.Unsent) {
+                    // Сообщение ушло: снимаем подписку и больше за ним не следим.
+                    self.ghostScheduledMessageIds.remove(id)
+                    self.ghostFailureDisposables.removeValue(forKey: id)?.dispose()
+                }
+            })
+            self.ghostFailureDisposables[id] = disposable
+        }
+    }
+    
+    private func showGhostDelayedSendFailureToast() {
+        self.present(UndoOverlayController(presentationData: self.presentationData, content: .info(title: nil, text: "Не удалось отправить отложенное сообщение", timeout: Double(GhostModeOutbox.textDelay), customUndoText: "Выключить задержку"), action: { [weak self] value in
+            if case .undo = value, let self {
+                GhostModeSettings.shared.update(accountId: self.context.account.peerId.toInt64()) { config in
+                    config.delayedSend = false
+                }
+            }
+            return true
+        }), in: .current)
+    }
+    
     deinit {
         let _ = ChatControllerCount.modify { value in
             return value - 1
@@ -7216,6 +7265,10 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         self.controllerNavigationDisposable.dispose()
         self.sentMessageEventsDisposable.dispose()
         self.failedMessageEventsDisposable.dispose()
+        for (_, disposable) in self.ghostFailureDisposables {
+            disposable.dispose()
+        }
+        self.ghostFailureDisposables.removeAll()
         self.sentPeerMediaMessageEventsDisposable.dispose()
         self.messageActionCallbackDisposable.dispose()
         self.messageActionUrlAuthDisposable.dispose()
@@ -9404,6 +9457,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 |> deliverOnMainQueue).startStandalone(next: { [weak self] messageIds in
                     // AyuGram Ghost Mode: сообщение поставлено в очередь — перекрываем онлайн.
                     GhostModeOfflineKeeper.shared.notifyActivity("message-sent")
+                    if let strongSelf = self {
+                        let ghostScheduledIds = messageIds.compactMap { $0 }
+                        if !ghostScheduledIds.isEmpty && GhostModeSettings.shared.config(accountId: strongSelf.context.account.peerId.toInt64()).delayedSend {
+                            strongSelf.registerGhostScheduledMessages(ghostScheduledIds)
+                        }
+                    }
                     if let strongSelf = self, let toastDelay = ghostToastDelay {
                         let scheduledIds = messageIds.compactMap { $0 }
                         if !scheduledIds.isEmpty {
