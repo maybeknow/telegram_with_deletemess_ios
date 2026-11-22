@@ -9390,8 +9390,21 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                         if commit || !isScheduledMessages {
                 self.commitPurposefulAction()
                 
+                // Срок для тоста: при включённой задержке сообщение уходит отложенным, и его можно отменить.
+                let ghostToastDelay: Int32? = GhostModeSettings.shared.config(accountId: self.context.account.id.toInt64()).delayedSend ? GhostModeOutbox.textDelay : nil
                 let _ = (enqueueMessages(account: self.context.account, peerId: peerId, messages: self.transformEnqueueMessages(messages, postpone: postpone))
-                |> deliverOnMainQueue).startStandalone(next: { [weak self] _ in
+                |> deliverOnMainQueue).startStandalone(next: { [weak self] messageIds in
+                    if let strongSelf = self, let toastDelay = ghostToastDelay {
+                        let scheduledIds = messageIds.compactMap { $0 }
+                        if !scheduledIds.isEmpty {
+                            strongSelf.present(UndoOverlayController(presentationData: strongSelf.presentationData, content: .info(title: nil, text: "Уйдёт через \(toastDelay) с", timeout: Double(toastDelay), customUndoText: "Отменить"), action: { value in
+                                if case .undo = value {
+                                    GhostModeOutbox.cancelScheduled(engine: strongSelf.context.engine.messages, messageIds: scheduledIds)
+                                }
+                                return true
+                            }), in: .current)
+                        }
+                    }
                     if let strongSelf = self, strongSelf.presentationInterfaceState.subject != .scheduledMessages {
                         strongSelf.chatDisplayNode.historyNode.scrollToEndOfHistory()
                     }
