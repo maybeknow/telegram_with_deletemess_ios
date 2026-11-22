@@ -260,6 +260,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     public internal(set) var chatLocation: ChatLocation
     // AyuGram Ghost Mode: последний chatLocation, для которого keeper уже уведомили.
     private var lastGhostActivityChatLocation: ChatLocation?
+    // AyuGram Ghost Mode: пассивный бейдж в навбаре, виден при blocksUpdateStatus.
+    private var ghostBadgeItem: UIBarButtonItem?
     
     // AyuGram Ghost Mode: id сообщений, поставленных в отложенные нами, и подписки на их
     // состояние. Подписка одноэлементная (мульти-вариант engine.data.subscribe в проекте
@@ -7246,6 +7248,23 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         }), in: .current)
     }
     
+    /// Пассивный индикатор Ghost Mode в навбаре: отдельная кнопка, поэтому раскладка
+    /// заголовка (ChatTitleView) не меняется. Настройку читаем при каждом появлении
+    /// экрана: подписка на onChange здесь не годится, у GhostModeSettings один слот
+    /// подписчика и его занимает экран настроек.
+    private func updateGhostBadge() {
+        let isGhost = GhostModeSettings.shared.config(accountId: self.context.account.peerId.toInt64()).blocksUpdateStatus
+        if isGhost {
+            let item = UIBarButtonItem(title: "ghost", style: .plain, target: nil, action: nil)
+            item.isEnabled = false
+            self.ghostBadgeItem = item
+            self.navigationItem.rightBarButtonItem = item
+        } else {
+            self.ghostBadgeItem = nil
+            self.navigationItem.rightBarButtonItem = nil
+        }
+    }
+    
     deinit {
         let _ = ChatControllerCount.modify { value in
             return value - 1
@@ -8043,6 +8062,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         if self.lastGhostActivityChatLocation != self.chatLocation {
             self.lastGhostActivityChatLocation = self.chatLocation
             GhostModeOfflineKeeper.shared.notifyActivity("chat-opened")
+
+            // Бейдж «ghost»: показываем, пока включён режим «Всегда офлайн».
+            self.updateGhostBadge()
         }
         super.viewDidAppear(animated)
         self.forwardSideListAppearance(.didAppear, animated: animated)
