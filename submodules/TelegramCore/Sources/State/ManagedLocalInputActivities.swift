@@ -181,6 +181,10 @@ private func requestActivity(postbox: Postbox, network: Network, accountPeerId: 
                 if topMessageId != nil {
                     flags |= 1 << 0
                 }
+                // AyuGram Ghost Mode: «печатает…» серверу не сообщаем.
+                if GhostModeGate(accountId: accountPeerId.toInt64()).isBlocked(.setTyping) {
+                    return .complete()
+                }
                 return network.request(Api.functions.messages.setTyping(flags: flags, peer: inputPeer, topMsgId: topMessageId, action: actionFromActivity(activity)))
                 |> `catch` { _ -> Signal<Api.Bool, NoError> in
                     return .single(.boolFalse)

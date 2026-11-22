@@ -95,6 +95,10 @@ func _internal_stopIncomingTypingDraft(postbox: Postbox, network: Network, peerI
         if topMessageId != nil {
             flags |= 1 << 0
         }
+        // AyuGram Ghost Mode: остановку набора тоже не сообщаем (accountPeerId в сигнатуре нет).
+        if GhostModeGate.isBlocked(.setTyping) {
+            return .complete()
+        }
         return network.request(Api.functions.messages.setTyping(flags: flags, peer: inputPeer, topMsgId: topMessageId, action: .sendMessageStopDraftAction(.init(randomId: randomId))))
         |> `catch` { _ -> Signal<Api.Bool, NoError> in
             return .single(.boolFalse)

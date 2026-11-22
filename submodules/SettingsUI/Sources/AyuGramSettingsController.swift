@@ -260,6 +260,9 @@ private func ayuGramSettingsControllerEntries(presentationData: PresentationData
 /// Экран «Настройки → AyuGram»: те же строки, заголовки и отступы, что у «Архива» и «Оформления»,
 /// потому что это те же элементы ItemListUI.
 public func ayuGramSettingsController(context: AccountContext) -> ViewController {
+    // GhostModeGate используется и в местах без accountPeerId в сигнатуре — запоминаем id,
+    // чтобы политика блокировок работала и там.
+    GhostModeGate.fallbackAccountId = context.account.id.toInt64()
     let arguments = AyuGramSettingsControllerArguments(
         updateKeepDeleted: { value in
             UserDefaults.standard.set(value, forKey: ayuKeepDeletedKey)
