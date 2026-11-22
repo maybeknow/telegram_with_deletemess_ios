@@ -368,6 +368,21 @@ public final class GhostModeOfflineKeeper {
 
 ---
 
+### 3.5 Первая реализация отмены [ДОБАВЛЕНО 8]
+
+Отмена «передумал» в первой версии сделана **тостом `UndoOverlayController`** после отправки,
+а не плашкой в composer: тост показывает «Уйдёт через N с» с кнопкой «Отменить», которая
+вызывает `GhostModeOutbox.cancelScheduled(engine:messageIds:)`.
+
+Отличия от документа: счётчик секунд не тикает, плашка не связана с полем ввода и живёт
+один раз после отправки. Функционально это то же самое — запланированное сообщение можно
+отменить. Полноценная composer-плашка со счётчиком — следующий шаг, если понадобится.
+
+Размер медиа для задержки берётся из подтверждённой цепочки
+`EnqueueMessage.message(mediaReference:)` → `AnyMediaReference.media as? TelegramMediaFile` →
+`.resource.size` (`SyncCore_TelegramMediaFile.swift:703`, `MediaResource.swift:14`);
+если размер неизвестен (pending, стриминг) — 12 с.
+
 ## 4. Точки интеграции **[ОБНОВЛЕНО 2]**
 
 | Файл | Есть? | Что делаем |

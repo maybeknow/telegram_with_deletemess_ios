@@ -44,3 +44,22 @@ public enum GhostModeOutbox {
         let _ = engine.deleteMessagesInteractively(messageIds: messageIds, type: .scheduledMessages).startStandalone()
     }
 }
+
+extension GhostModeOutbox {
+    /// Размер медиа у сообщения, которое готовится к отправке.
+    ///
+    /// Источник размера подтверждён по коду:
+    /// `TelegramMediaFile.resource: TelegramMediaResource` (SyncCore_TelegramMediaFile.swift:703)
+    /// и `MediaResource.size: Int64?` (Postbox/Sources/MediaResource.swift:14).
+    /// Если медиа нет, размер неизвестен или это не файл (стриминг, pending без метаданных) —
+    /// возвращаем `nil`, и вызывающий использует текстовую задержку 12 с.
+    public static func mediaSize(for message: EnqueueMessage) -> Int64? {
+        guard case let .message(_, _, _, mediaReference, _, _, _, _, _, _) = message, let reference = mediaReference else {
+            return nil
+        }
+        guard let file = reference.media as? TelegramMediaFile else {
+            return nil
+        }
+        return file.resource.size
+    }
+}

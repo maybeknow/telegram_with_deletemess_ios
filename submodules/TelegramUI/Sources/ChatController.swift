@@ -9378,7 +9378,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             // AyuGram Ghost Mode: при включённой задержке сообщение уходит отложенным,
             // а не сразу — это скрывает мгновенную активность от собеседника.
             if GhostModeSettings.shared.config(accountId: self.context.account.id.toInt64()).delayedSend {
-                let delay = GhostModeOutbox.delay(forMediaSize: nil)
+                // Задержка считается по каждому сообщению отдельно: в пачке может быть
+                // текст (12 с) и медиа (max(6, ceil(МБ × 4.5)) с).
+                let delay = GhostModeOutbox.delay(forMediaSize: GhostModeOutbox.mediaSize(for: message))
                 messages = messages.map { message -> EnqueueMessage in
                     return message.withUpdatedAttributes { attributes in
                         return GhostModeOutbox.applyDelay(attributes: attributes, delay: delay)
