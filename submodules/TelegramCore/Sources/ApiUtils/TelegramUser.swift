@@ -106,7 +106,7 @@ extension TelegramUser {
             if (flags & (1 << 26)) != 0 {
                 userFlags.insert(.isFake)
             }
-            if ayuLocalPremium(flags: flags, id: id.id._internalGetInt64Value()) {
+            if ayuLocalPremium(flags: flags, id: id) {
                 userFlags.insert(.isPremium)
             }
             if (flags2 & (1 << 2)) != 0 {
@@ -253,7 +253,7 @@ extension TelegramUser {
                         if (flags & Int32(1 << 26)) != 0 {
                             userFlags.insert(.isFake)
                         }
-                        if ayuLocalPremium(flags: flags, id: id.id._internalGetInt64Value()) {
+                        if ayuLocalPremium(flags: flags, id: lhs.id.toInt64()) {
                             userFlags.insert(.isPremium)
                         }
                         
