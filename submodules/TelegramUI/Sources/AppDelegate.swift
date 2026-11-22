@@ -2086,6 +2086,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
 
     func handleDidEnterBackground() {
+        // AyuGram Ghost Mode: приложение ушло в фон — перекрываем «в сети», выставленный запросами.
+        GhostModeOfflineKeeper.shared.notifyActivity("app-background")
         let _ = (self.sharedContextPromise.get()
         |> take(1)
         |> deliverOnMainQueue).start(next: { sharedApplicationContext in

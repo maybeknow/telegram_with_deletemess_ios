@@ -784,6 +784,12 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                             }
 
                             let context = AccountContextImpl(sharedContext: self, account: account, limitsConfiguration: accountRecord.3.limitsConfiguration ?? .defaultValue, contentSettings: accountRecord.3.contentSettings ?? .default, appConfiguration: accountRecord.3.appConfiguration ?? .defaultValue, availableReplyColors: accountRecord.3.availableReplyColors, availableProfileColors: accountRecord.3.availableProfileColors)
+                            
+                            // AyuGram Ghost Mode: привязываем keeper к этому аккаунту и запускаем его.
+                            // start() вызывается всегда: sendOffline сам проверяет isBlocked(.updateStatus),
+                            // а холостой таймер раз в 60 с почти ничего не стоит.
+                            GhostModeOfflineKeeper.shared.configure(accountId: context.account.id.toInt64(), network: TelegramGhostModeNetwork(network: context.account.network))
+                            GhostModeOfflineKeeper.shared.start()
 
                             self.activeAccountsValue!.accounts.append((account.id, context, accountRecord.2))
                             

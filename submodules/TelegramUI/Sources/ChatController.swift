@@ -258,6 +258,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     
     let context: AccountContext
     public internal(set) var chatLocation: ChatLocation
+    // AyuGram Ghost Mode: последний chatLocation, для которого keeper уже уведомили.
+    private var lastGhostActivityChatLocation: ChatLocation?
     public internal(set) var subject: ChatControllerSubject?
     var initialTextInputState: ChatTextInputState?
     
@@ -7983,6 +7985,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     }
 
     override public func viewDidAppear(_ animated: Bool) {
+        // AyuGram Ghost Mode: открыли чат. Уведомляем один раз на chatLocation, иначе
+        // возврат из фона или переключение таба спамили бы keeper.
+        if self.lastGhostActivityChatLocation != self.chatLocation {
+            self.lastGhostActivityChatLocation = self.chatLocation
+            GhostModeOfflineKeeper.shared.notifyActivity("chat-opened")
+        }
         super.viewDidAppear(animated)
         self.forwardSideListAppearance(.didAppear, animated: animated)
         
@@ -9394,6 +9402,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 let ghostToastDelay: Int32? = GhostModeSettings.shared.config(accountId: self.context.account.id.toInt64()).delayedSend ? GhostModeOutbox.textDelay : nil
                 let _ = (enqueueMessages(account: self.context.account, peerId: peerId, messages: self.transformEnqueueMessages(messages, postpone: postpone))
                 |> deliverOnMainQueue).startStandalone(next: { [weak self] messageIds in
+                    // AyuGram Ghost Mode: сообщение поставлено в очередь — перекрываем онлайн.
+                    GhostModeOfflineKeeper.shared.notifyActivity("message-sent")
                     if let strongSelf = self, let toastDelay = ghostToastDelay {
                         let scheduledIds = messageIds.compactMap { $0 }
                         if !scheduledIds.isEmpty {
