@@ -89,6 +89,7 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
     case readStories(Bool)
     case alwaysOffline(Bool)
     case delayedSend(Bool)
+    case delayedSendFooter
     case ghostFooter
 
     var section: ItemListSectionId {
@@ -103,7 +104,7 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             return AyuGramSection.banner.rawValue
         case .markHeader, .mark, .markFooter:
             return AyuGramSection.mark.rawValue
-        case .ghostHeader, .readHistory, .typing, .readStories, .alwaysOffline, .delayedSend, .ghostFooter:
+        case .ghostHeader, .readHistory, .typing, .readStories, .alwaysOffline, .delayedSend, .delayedSendFooter, .ghostFooter:
             return AyuGramSection.ghost.rawValue
         }
     }
@@ -133,7 +134,8 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
         case .readStories: return 20
         case .alwaysOffline: return 21
         case .delayedSend: return 22
-        case .ghostFooter: return 23
+        case .delayedSendFooter: return 23
+        case .ghostFooter: return 24
         }
     }
 
@@ -214,6 +216,8 @@ private enum AyuGramSettingsControllerEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Отправлять с задержкой", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.updateGhost { $0.delayedSend = value }
             })
+        case .delayedSendFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .markdown("При активном ghost каждое сообщение становится отложенным; при достижении серверного лимита отправка может не пройти."), sectionId: self.section)
         case .ghostFooter:
             return ItemListTextItem(presentationData: presentationData, text: .markdown("Пока включён Ghost Mode, клиент не отправляет серверу прочтение, набор текста, просмотр историй и не выставляет себя в сети. Параллельный официальный клиент этот режим не соблюдает."), sectionId: self.section)
         }
@@ -252,6 +256,7 @@ private func ayuGramSettingsControllerEntries(presentationData: PresentationData
     entries.append(.readStories(ghost.blocksReadStories))
     entries.append(.alwaysOffline(ghost.blocksUpdateStatus))
     entries.append(.delayedSend(ghost.delayedSend))
+    entries.append(.delayedSendFooter)
     entries.append(.ghostFooter)
 
     return entries
