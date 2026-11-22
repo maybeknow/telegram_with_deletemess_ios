@@ -259,27 +259,6 @@ public func ayuGramSettingsController(context: AccountContext) -> ViewController
 
     // Метка удалённого: обычное текстовое поле в алерте, значение хранится в UserDefaults
     // и переживает перезапуск приложения.
-    arguments.presentMarkEditor = { [weak controller] in
-        guard let controller else {
-            return
-        }
-        let current = (UserDefaults.standard.object(forKey: ayuDeletedMarkKey) as? String) ?? "\u{1F5D1}\u{FE0E}"
-        let alert = UIAlertController(title: "Метка удалённого", message: "Текст перед временем у сохранённого сообщения", preferredStyle: .alert)
-        alert.addTextField { field in
-            field.text = current
-            field.clearButtonMode = .whileEditing
-        }
-        alert.addAction(UIAlertAction(title: "Сохранить", style: .default, handler: { _ in
-            let value = alert.textFields?.first?.text ?? ""
-            UserDefaults.standard.set(value.isEmpty ? "\u{1F5D1}\u{FE0E}" : value, forKey: ayuDeletedMarkKey)
-        }))
-        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive, handler: { _ in
-            UserDefaults.standard.set("\u{1F5D1}\u{FE0E}", forKey: ayuDeletedMarkKey)
-        }))
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel, handler: nil))
-        controller.present(alert, animated: true, completion: nil)
-    }
-
     return controller
 }
 
